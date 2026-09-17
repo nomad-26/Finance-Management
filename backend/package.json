@@ -1,0 +1,44 @@
+{
+  "name": "kkv-gold-finance-backend",
+  "version": "1.0.0",
+  "description": "Node.js + TypeScript + Express Backend for KKV Gold Finance & Rental Management System with Custom JWT Auth & RBAC",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "clean": "node --input-type=module -e \"import { rmSync, existsSync } from 'fs'; if (existsSync('dist')) { rmSync('dist', { recursive: true, force: true }); console.log('dist/ cleaned'); }\"",
+    "build": "npm run clean && tsc",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "seed:admin": "tsx src/scripts/seedAdmin.ts",
+    "reset:rental": "tsx src/scripts/resetRentalData.ts",
+    "reset:dev": "tsx src/scripts/resetDevelopmentData.ts",
+    "reset:all": "tsx src/scripts/resetDevelopmentData.ts"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "decimal.js": "^10.4.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "jszip": "^3.10.1",
+    "multer": "^2.3.0",
+    "pdfkit": "^0.20.2",
+    "uuid": "^9.0.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/jszip": "^3.4.0",
+    "@types/multer": "^2.2.0",
+    "@types/node": "^20.11.24",
+    "@types/pdfkit": "^0.17.6",
+    "@types/uuid": "^9.0.8",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3"
+  }
+}

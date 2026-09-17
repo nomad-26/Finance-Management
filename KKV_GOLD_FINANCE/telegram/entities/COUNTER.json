@@ -1,0 +1,23 @@
+[
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "COUNTER",
+    "id": "APP_COUNTERS",
+    "version": 18,
+    "createdAt": "2026-09-15T14:43:04.773Z",
+    "updatedAt": "2026-09-15T17:09:10.172Z",
+    "isDeleted": false,
+    "deletedAt": null,
+    "deletedBy": null,
+    "data": {
+      "customerId": 0,
+      "loanSequence": 0,
+      "loanNo": 0,
+      "receiptNo": 0,
+      "fdNo": 0,
+      "staff_id_sequence": 11,
+      "rental_staff_id_sequence": 7
+    }
+  }
+]

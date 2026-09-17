@@ -1,0 +1,596 @@
+{
+  "USER:KKV-ADMIN-000001": {
+    "type": "USER",
+    "id": "KKV-ADMIN-000001",
+    "version": 1,
+    "messageId": 20,
+    "updatedAt": "2026-09-14T07:48:38.333Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-STAFF-000099": {
+    "type": "USER",
+    "id": "KKV-STAFF-000099",
+    "version": 1,
+    "messageId": 21,
+    "updatedAt": "2026-09-14T07:48:38.335Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-RENTAL-000001": {
+    "type": "USER",
+    "id": "KKV-RENTAL-000001",
+    "version": 1,
+    "messageId": 22,
+    "updatedAt": "2026-09-14T07:48:38.336Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "COUNTER:APP_COUNTERS": {
+    "type": "COUNTER",
+    "id": "APP_COUNTERS",
+    "version": 18,
+    "messageId": 59,
+    "updatedAt": "2026-09-15T17:09:10.172Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-STAFF-000001": {
+    "type": "USER",
+    "id": "KKV-STAFF-000001",
+    "version": 3,
+    "messageId": 60,
+    "updatedAt": "2026-09-15T14:43:08.147Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789483386244-cyxh0l": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789483386244-cyxh0l",
+    "version": 1,
+    "messageId": 61,
+    "updatedAt": "2026-09-15T14:43:06.244Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789483387765-r11ov0": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789483387765-r11ov0",
+    "version": 1,
+    "messageId": 62,
+    "updatedAt": "2026-09-15T14:43:07.765Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789483391695-6d6lxx": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789483391695-6d6lxx",
+    "version": 1,
+    "messageId": 63,
+    "updatedAt": "2026-09-15T14:43:11.695Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789483392091-p39z7x": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789483392091-p39z7x",
+    "version": 1,
+    "messageId": 64,
+    "updatedAt": "2026-09-15T14:43:12.091Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-STAFF-000002": {
+    "type": "USER",
+    "id": "KKV-STAFF-000002",
+    "version": 4,
+    "messageId": 65,
+    "updatedAt": "2026-09-15T14:44:47.370Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T14:44:47.369Z"
+  },
+  "AUDIT:AUDIT-1789483481138-9hp1zl": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789483481138-9hp1zl",
+    "version": 1,
+    "messageId": 66,
+    "updatedAt": "2026-09-15T14:44:41.138Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789483482619-jw51ga": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789483482619-jw51ga",
+    "version": 1,
+    "messageId": 67,
+    "updatedAt": "2026-09-15T14:44:42.619Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789483486585-24vrxk": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789483486585-24vrxk",
+    "version": 1,
+    "messageId": 68,
+    "updatedAt": "2026-09-15T14:44:46.585Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789483486988-jg8lrk": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789483486988-jg8lrk",
+    "version": 1,
+    "messageId": 69,
+    "updatedAt": "2026-09-15T14:44:46.988Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-STAFF-000003": {
+    "type": "USER",
+    "id": "KKV-STAFF-000003",
+    "version": 4,
+    "messageId": 78,
+    "updatedAt": "2026-09-15T16:21:42.076Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:21:42.076Z"
+  },
+  "AUDIT:AUDIT-1789489295502-6epoxr": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789489295502-6epoxr",
+    "version": 1,
+    "messageId": 79,
+    "updatedAt": "2026-09-15T16:21:35.502Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789489297020-gouzkh": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789489297020-gouzkh",
+    "version": 1,
+    "messageId": 80,
+    "updatedAt": "2026-09-15T16:21:37.020Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789489301302-1qivgm": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789489301302-1qivgm",
+    "version": 1,
+    "messageId": 81,
+    "updatedAt": "2026-09-15T16:21:41.302Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789489301693-7bmr0p": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789489301693-7bmr0p",
+    "version": 1,
+    "messageId": 82,
+    "updatedAt": "2026-09-15T16:21:41.693Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-STAFF-000004": {
+    "type": "USER",
+    "id": "KKV-STAFF-000004",
+    "version": 4,
+    "messageId": 83,
+    "updatedAt": "2026-09-15T16:25:40.187Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:25:40.187Z"
+  },
+  "AUDIT:AUDIT-1789489533621-pwpvuk": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789489533621-pwpvuk",
+    "version": 1,
+    "messageId": 84,
+    "updatedAt": "2026-09-15T16:25:33.621Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789489535288-x4opoz": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789489535288-x4opoz",
+    "version": 1,
+    "messageId": 85,
+    "updatedAt": "2026-09-15T16:25:35.288Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789489539290-35prvj": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789489539290-35prvj",
+    "version": 1,
+    "messageId": 86,
+    "updatedAt": "2026-09-15T16:25:39.290Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789489539745-pgej6u": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789489539745-pgej6u",
+    "version": 1,
+    "messageId": 87,
+    "updatedAt": "2026-09-15T16:25:39.745Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-STAFF-000005": {
+    "type": "USER",
+    "id": "KKV-STAFF-000005",
+    "version": 2,
+    "messageId": 88,
+    "updatedAt": "2026-09-15T16:28:45.999Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:28:45.999Z"
+  },
+  "AUDIT:AUDIT-1789489724392-08f1q2": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789489724392-08f1q2",
+    "version": 1,
+    "messageId": 89,
+    "updatedAt": "2026-09-15T16:28:44.392Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789489725605-3za69t": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789489725605-3za69t",
+    "version": 1,
+    "messageId": 90,
+    "updatedAt": "2026-09-15T16:28:45.605Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-RS-000001": {
+    "type": "USER",
+    "id": "KKV-RS-000001",
+    "version": 2,
+    "messageId": 91,
+    "updatedAt": "2026-09-15T16:28:52.204Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:28:52.204Z"
+  },
+  "AUDIT:AUDIT-1789489730562-9hz3w4": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789489730562-9hz3w4",
+    "version": 1,
+    "messageId": 92,
+    "updatedAt": "2026-09-15T16:28:50.562Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789489731797-9f11mk": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789489731797-9f11mk",
+    "version": 1,
+    "messageId": 93,
+    "updatedAt": "2026-09-15T16:28:51.797Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-STAFF-000006": {
+    "type": "USER",
+    "id": "KKV-STAFF-000006",
+    "version": 2,
+    "messageId": 94,
+    "updatedAt": "2026-09-15T16:29:26.598Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:29:26.598Z"
+  },
+  "AUDIT:AUDIT-1789489764947-6bh5rg": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789489764947-6bh5rg",
+    "version": 1,
+    "messageId": 95,
+    "updatedAt": "2026-09-15T16:29:24.947Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789489766152-uanqtp": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789489766152-uanqtp",
+    "version": 1,
+    "messageId": 96,
+    "updatedAt": "2026-09-15T16:29:26.152Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-RS-000002": {
+    "type": "USER",
+    "id": "KKV-RS-000002",
+    "version": 2,
+    "messageId": 97,
+    "updatedAt": "2026-09-15T16:29:32.562Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:29:32.562Z"
+  },
+  "AUDIT:AUDIT-1789489771182-elw5ps": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789489771182-elw5ps",
+    "version": 1,
+    "messageId": 98,
+    "updatedAt": "2026-09-15T16:29:31.183Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789489772180-nnxnld": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789489772180-nnxnld",
+    "version": 1,
+    "messageId": 99,
+    "updatedAt": "2026-09-15T16:29:32.180Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-STAFF-000007": {
+    "type": "USER",
+    "id": "KKV-STAFF-000007",
+    "version": 2,
+    "messageId": 100,
+    "updatedAt": "2026-09-15T16:38:00.610Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:38:00.610Z"
+  },
+  "AUDIT:AUDIT-1789490279213-y5qwzw": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789490279213-y5qwzw",
+    "version": 1,
+    "messageId": 101,
+    "updatedAt": "2026-09-15T16:37:59.213Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789490280206-sdbiwh": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789490280206-sdbiwh",
+    "version": 1,
+    "messageId": 102,
+    "updatedAt": "2026-09-15T16:38:00.206Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-RS-000003": {
+    "type": "USER",
+    "id": "KKV-RS-000003",
+    "version": 2,
+    "messageId": 103,
+    "updatedAt": "2026-09-15T16:38:08.263Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:38:08.263Z"
+  },
+  "AUDIT:AUDIT-1789490285157-2qdvkg": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789490285157-2qdvkg",
+    "version": 1,
+    "messageId": 104,
+    "updatedAt": "2026-09-15T16:38:05.157Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789490287788-tznzy7": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789490287788-tznzy7",
+    "version": 1,
+    "messageId": 105,
+    "updatedAt": "2026-09-15T16:38:07.788Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-STAFF-000008": {
+    "type": "USER",
+    "id": "KKV-STAFF-000008",
+    "version": 2,
+    "messageId": 106,
+    "updatedAt": "2026-09-15T16:49:21.806Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:49:21.806Z"
+  },
+  "AUDIT:AUDIT-1789490959517-sr2gwz": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789490959517-sr2gwz",
+    "version": 1,
+    "messageId": 107,
+    "updatedAt": "2026-09-15T16:49:19.517Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789490960987-j1gk6r": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789490960987-j1gk6r",
+    "version": 1,
+    "messageId": 108,
+    "updatedAt": "2026-09-15T16:49:20.987Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-RS-000004": {
+    "type": "USER",
+    "id": "KKV-RS-000004",
+    "version": 2,
+    "messageId": 109,
+    "updatedAt": "2026-09-15T16:49:27.889Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:49:27.889Z"
+  },
+  "AUDIT:AUDIT-1789490965391-mv8rn8": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789490965391-mv8rn8",
+    "version": 1,
+    "messageId": 110,
+    "updatedAt": "2026-09-15T16:49:25.391Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789490967524-nf1gjf": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789490967524-nf1gjf",
+    "version": 1,
+    "messageId": 111,
+    "updatedAt": "2026-09-15T16:49:27.524Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-STAFF-000009": {
+    "type": "USER",
+    "id": "KKV-STAFF-000009",
+    "version": 2,
+    "messageId": 112,
+    "updatedAt": "2026-09-15T16:58:31.346Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:58:31.346Z"
+  },
+  "AUDIT:AUDIT-1789491509901-xm4zto": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789491509901-xm4zto",
+    "version": 1,
+    "messageId": 113,
+    "updatedAt": "2026-09-15T16:58:29.901Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789491510933-ygwjwe": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789491510933-ygwjwe",
+    "version": 1,
+    "messageId": 114,
+    "updatedAt": "2026-09-15T16:58:30.933Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-RS-000005": {
+    "type": "USER",
+    "id": "KKV-RS-000005",
+    "version": 2,
+    "messageId": 115,
+    "updatedAt": "2026-09-15T16:58:38.213Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:58:38.213Z"
+  },
+  "AUDIT:AUDIT-1789491516531-3skuy3": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789491516531-3skuy3",
+    "version": 1,
+    "messageId": 116,
+    "updatedAt": "2026-09-15T16:58:36.531Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789491517827-9nj16h": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789491517827-9nj16h",
+    "version": 1,
+    "messageId": 117,
+    "updatedAt": "2026-09-15T16:58:37.827Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-STAFF-000010": {
+    "type": "USER",
+    "id": "KKV-STAFF-000010",
+    "version": 2,
+    "messageId": 118,
+    "updatedAt": "2026-09-15T17:02:58.397Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T17:02:58.397Z"
+  },
+  "AUDIT:AUDIT-1789491776865-kmtd6w": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789491776865-kmtd6w",
+    "version": 1,
+    "messageId": 119,
+    "updatedAt": "2026-09-15T17:02:56.865Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789491777961-j7imxp": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789491777961-j7imxp",
+    "version": 1,
+    "messageId": 120,
+    "updatedAt": "2026-09-15T17:02:57.961Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-RS-000006": {
+    "type": "USER",
+    "id": "KKV-RS-000006",
+    "version": 2,
+    "messageId": 121,
+    "updatedAt": "2026-09-15T17:03:05.328Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T17:03:05.328Z"
+  },
+  "AUDIT:AUDIT-1789491783318-qpmkpd": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789491783318-qpmkpd",
+    "version": 1,
+    "messageId": 122,
+    "updatedAt": "2026-09-15T17:03:03.318Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789491784934-ee2kaa": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789491784934-ee2kaa",
+    "version": 1,
+    "messageId": 123,
+    "updatedAt": "2026-09-15T17:03:04.935Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-STAFF-000011": {
+    "type": "USER",
+    "id": "KKV-STAFF-000011",
+    "version": 2,
+    "messageId": 124,
+    "updatedAt": "2026-09-15T17:09:09.724Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T17:09:09.724Z"
+  },
+  "AUDIT:AUDIT-1789492148080-vxq1lc": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789492148080-vxq1lc",
+    "version": 1,
+    "messageId": 125,
+    "updatedAt": "2026-09-15T17:09:08.080Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789492149323-9hrvd8": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789492149323-9hrvd8",
+    "version": 1,
+    "messageId": 126,
+    "updatedAt": "2026-09-15T17:09:09.323Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "USER:KKV-RS-000007": {
+    "type": "USER",
+    "id": "KKV-RS-000007",
+    "version": 2,
+    "messageId": 127,
+    "updatedAt": "2026-09-15T17:09:15.976Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T17:09:15.976Z"
+  },
+  "AUDIT:AUDIT-1789492154412-4m2x7u": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789492154412-4m2x7u",
+    "version": 1,
+    "messageId": 128,
+    "updatedAt": "2026-09-15T17:09:14.412Z",
+    "isDeleted": false,
+    "deletedAt": null
+  },
+  "AUDIT:AUDIT-1789492155471-k2rou8": {
+    "type": "AUDIT",
+    "id": "AUDIT-1789492155471-k2rou8",
+    "version": 1,
+    "messageId": 129,
+    "updatedAt": "2026-09-15T17:09:15.471Z",
+    "isDeleted": false,
+    "deletedAt": null
+  }
+}

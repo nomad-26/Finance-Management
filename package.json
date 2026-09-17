@@ -1,0 +1,123 @@
+{
+  "name": "kkv-gold-finance",
+  "description": "KKV Gold Finance & Rental Management Desktop Application",
+  "author": "KKV Gold Finance",
+  "private": true,
+  "version": "1.0.2",
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "clean": "node --input-type=module -e \"import { rmSync } from 'fs'; ['dist','dist-electron','dist-package/KKV Gold Finance-win32-x64','node_modules/.vite'].forEach(d => { try { rmSync(d, { recursive: true, force: true }); console.log('Removed: ' + d); } catch (e) {} });\"",
+    "build:frontend": "tsc && vite build",
+    "build:backend": "cd backend && npm run build",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "build": "npm run build:frontend && npm run build:backend && npm run build:electron",
+    "preview": "vite preview",
+    "electron:dev": "concurrently -k \"vite\" \"cd backend && npm run dev\" \"npm run build:electron && wait-on tcp:5173 tcp:8080 && electron .\"",
+    "release:win": "node scripts/release.mjs",
+    "package:desktop": "npm run release:win",
+    "electron:pack": "npm run release:win",
+    "electron:build": "npm run release:win"
+  },
+  "build": {
+    "appId": "com.kkvgoldfinance.desktop",
+    "productName": "KKV Gold Finance",
+    "copyright": "Copyright © 2026 KKV Gold Finance",
+    "directories": {
+      "output": "dist-package",
+      "buildResources": "build"
+    },
+    "asar": true,
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json",
+      "!src/**",
+      "!backend/src/**",
+      "!electron/**",
+      "!*.md",
+      "!.env*",
+      "!vercel.json",
+      "!tsconfig.json",
+      "!vite.config.ts",
+      "!scripts/**"
+    ],
+    "extraResources": [
+      {
+        "from": "build/icon.ico",
+        "to": "icon.ico"
+      },
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      },
+      {
+        "from": "backend/dist",
+        "to": "backend/dist",
+        "filter": ["**/*", "!**/*.ts"]
+      },
+      {
+        "from": "backend/node_modules",
+        "to": "backend/node_modules",
+        "filter": ["**/*", "!**/*esbuild*", "!**/*.d.ts", "!**/*.map"]
+      },
+      {
+        "from": "backend/.env",
+        "to": "backend/.env"
+      },
+      {
+        "from": "backend/package.json",
+        "to": "backend/package.json"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "signtoolOptions": {
+        "publisherName": "KKV Gold Finance"
+      },
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "KKV-Gold-Finance-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "KKV Gold Finance",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "deleteAppDataOnUninstall": false
+    }
+  },
+  "dependencies": {
+    "axios": "^1.20.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.475.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.2.4",
+    "cross-env": "^10.0.0",
+    "electron": "^41.7.1",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0",
+    "wait-on": "^9.1.0"
+  }
+}

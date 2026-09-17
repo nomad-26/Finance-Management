@@ -1,0 +1,1829 @@
+[
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-ADMIN-000001",
+    "version": 1,
+    "createdAt": "2026-09-14T07:48:38.333Z",
+    "updatedAt": "2026-09-14T07:48:38.333Z",
+    "isDeleted": false,
+    "deletedAt": null,
+    "deletedBy": null,
+    "data": {
+      "_id": "user_admin_001",
+      "staffId": "KKV-ADMIN-000001",
+      "uid": "uid_admin_001",
+      "fullName": "KKV Master Admin",
+      "displayName": "KKV Master Admin",
+      "email": "admin@kkvgoldfinance.com",
+      "phoneNumber": "9876543210",
+      "phone": "9876543210",
+      "role": "ADMIN",
+      "passwordHash": "$2b$10$iM0bIhwNSR8k8Lb1XpQbKeSCJ/FztoAqGP5fz0PBUA61JP6lByOAC",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": false,
+      "permissions": {
+        "customers": {
+          "view": true,
+          "create": true,
+          "edit": true,
+          "delete": true
+        },
+        "loans": {
+          "view": true,
+          "issue": true,
+          "edit": true,
+          "close": true,
+          "reopen": true
+        },
+        "fixedDeposits": {
+          "view": true,
+          "create": true,
+          "edit": true,
+          "withdraw": true,
+          "renew": true
+        },
+        "rental": {
+          "view": true,
+          "manageComplexes": true,
+          "collectRent": true,
+          "manageExpenses": true,
+          "reports": true
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": true,
+          "deleteEntry": true
+        },
+        "staffManagement": {
+          "view": true,
+          "create": true,
+          "edit": true,
+          "delete": true,
+          "toggleStatus": true
+        },
+        "reports": {
+          "view": true,
+          "export": true
+        },
+        "settings": {
+          "view": true,
+          "editRates": true,
+          "editCompany": true
+        },
+        "backupRestore": {
+          "createBackup": true,
+          "restoreBackup": true
+        }
+      },
+      "department": "Administration",
+      "createdByUid": "INITIAL_SEED",
+      "createdByEmail": "system@kkvgoldfinance.com",
+      "createdAt": "2026-09-14T07:48:38.131Z",
+      "updatedAt": "2026-09-14T07:48:38.131Z"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-STAFF-000099",
+    "version": 1,
+    "createdAt": "2026-09-14T07:48:38.335Z",
+    "updatedAt": "2026-09-14T07:48:38.335Z",
+    "isDeleted": false,
+    "deletedAt": null,
+    "deletedBy": null,
+    "data": {
+      "_id": "user_staff_001",
+      "staffId": "KKV-STAFF-000099",
+      "uid": "uid_staff_001",
+      "fullName": "Finance Operations Staff",
+      "displayName": "Finance Staff",
+      "email": "staff@kkvgoldfinance.com",
+      "phoneNumber": "9876543211",
+      "phone": "9876543211",
+      "role": "STAFF",
+      "passwordHash": "$2b$10$kWe93GRkoWGtKdIjYhikteU.wctSPQi5Xbgcj0tWiUPFRVtiDiMMO",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": false,
+      "permissions": {
+        "customers": {
+          "view": true,
+          "create": true,
+          "edit": true,
+          "delete": false
+        },
+        "loans": {
+          "view": true,
+          "issue": true,
+          "edit": false,
+          "close": true,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": true,
+          "create": true,
+          "edit": false,
+          "withdraw": true,
+          "renew": true
+        },
+        "rental": {
+          "view": false,
+          "manageComplexes": false,
+          "collectRent": false,
+          "manageExpenses": false,
+          "reports": false
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": false
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Finance Operations",
+      "createdByUid": "INITIAL_SEED",
+      "createdByEmail": "system@kkvgoldfinance.com",
+      "createdAt": "2026-09-14T07:48:38.228Z",
+      "updatedAt": "2026-09-14T07:48:38.228Z"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-RENTAL-000001",
+    "version": 1,
+    "createdAt": "2026-09-14T07:48:38.336Z",
+    "updatedAt": "2026-09-14T07:48:38.336Z",
+    "isDeleted": false,
+    "deletedAt": null,
+    "deletedBy": null,
+    "data": {
+      "_id": "user_rental_001",
+      "staffId": "KKV-RENTAL-000001",
+      "uid": "uid_rental_001",
+      "fullName": "Rental Complex Manager",
+      "displayName": "Rental Staff",
+      "email": "rental@kkvgoldfinance.com",
+      "phoneNumber": "9876543212",
+      "phone": "9876543212",
+      "role": "RENTAL_STAFF",
+      "passwordHash": "$2b$10$76gzwylY/Bk6HRFRO.OECOfM9WkzA1qsktsKYeVuraOOmUDaIF5ca",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": false,
+      "permissions": {
+        "customers": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false
+        },
+        "loans": {
+          "view": false,
+          "issue": false,
+          "edit": false,
+          "close": false,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "withdraw": false,
+          "renew": false
+        },
+        "rental": {
+          "view": true,
+          "manageComplexes": true,
+          "collectRent": true,
+          "manageExpenses": true,
+          "reports": true
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": true
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Rental Management",
+      "createdByUid": "INITIAL_SEED",
+      "createdByEmail": "system@kkvgoldfinance.com",
+      "createdAt": "2026-09-14T07:48:38.327Z",
+      "updatedAt": "2026-09-14T07:48:38.327Z"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-STAFF-000001",
+    "version": 3,
+    "createdAt": "2026-09-15T14:43:05.866Z",
+    "updatedAt": "2026-09-15T14:43:08.147Z",
+    "isDeleted": false,
+    "deletedAt": null,
+    "deletedBy": null,
+    "data": {
+      "_id": "usr_1789483385859_8cz2p",
+      "staffId": "KKV-STAFF-000001",
+      "uid": "uid_kkv_staff_000001_1789483385757",
+      "fullName": "Verified Staff 4761",
+      "displayName": "Verified Staff 4761",
+      "email": "test.staff.4761@kkvgoldfinance.com",
+      "phoneNumber": "9876543999",
+      "phone": "9876543999",
+      "role": "STAFF",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": true,
+      "permissions": {
+        "customers": {
+          "view": true,
+          "create": true,
+          "edit": true,
+          "delete": false
+        },
+        "loans": {
+          "view": true,
+          "issue": true,
+          "edit": false,
+          "close": true,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": true,
+          "create": true,
+          "edit": false,
+          "withdraw": true,
+          "renew": true
+        },
+        "rental": {
+          "view": false,
+          "manageComplexes": false,
+          "collectRent": false,
+          "manageExpenses": false,
+          "reports": false
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": false
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Finance Operations",
+      "createdByUid": "uid_admin_001",
+      "createdByEmail": "admin@kkvgoldfinance.com",
+      "createdAt": "2026-09-15T14:43:05.859Z",
+      "updatedAt": "2026-09-15T14:43:08.145Z",
+      "id": "uid_kkv_staff_000001_1789483385757"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-STAFF-000002",
+    "version": 4,
+    "createdAt": "2026-09-15T14:44:40.767Z",
+    "updatedAt": "2026-09-15T14:44:47.370Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T14:44:47.369Z",
+    "deletedBy": "SYSTEM",
+    "data": {
+      "_id": "usr_1789483480758_k39t2",
+      "staffId": "KKV-STAFF-000002",
+      "uid": "uid_kkv_staff_000002_1789483480609",
+      "fullName": "Verified Staff 9671",
+      "displayName": "Verified Staff 9671",
+      "email": "test.staff.9671@kkvgoldfinance.com",
+      "phoneNumber": "9883479671",
+      "phone": "9883479671",
+      "role": "STAFF",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": true,
+      "permissions": {
+        "customers": {
+          "view": true,
+          "create": true,
+          "edit": true,
+          "delete": false
+        },
+        "loans": {
+          "view": true,
+          "issue": true,
+          "edit": false,
+          "close": true,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": true,
+          "create": true,
+          "edit": false,
+          "withdraw": true,
+          "renew": true
+        },
+        "rental": {
+          "view": false,
+          "manageComplexes": false,
+          "collectRent": false,
+          "manageExpenses": false,
+          "reports": false
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": false
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Finance Operations",
+      "createdByUid": "uid_admin_001",
+      "createdByEmail": "admin@kkvgoldfinance.com",
+      "createdAt": "2026-09-15T14:44:40.758Z",
+      "updatedAt": "2026-09-15T14:44:43.018Z",
+      "id": "uid_kkv_staff_000002_1789483480609"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-STAFF-000003",
+    "version": 4,
+    "createdAt": "2026-09-15T16:21:34.990Z",
+    "updatedAt": "2026-09-15T16:21:42.076Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:21:42.076Z",
+    "deletedBy": "SYSTEM",
+    "data": {
+      "_id": "usr_1789489294982_0rsy4",
+      "staffId": "KKV-STAFF-000003",
+      "uid": "uid_kkv_staff_000003_1789489294816",
+      "fullName": "Verified Staff 2717",
+      "displayName": "Verified Staff 2717",
+      "email": "test.staff.2717@kkvgoldfinance.com",
+      "phoneNumber": "9889292717",
+      "phone": "9889292717",
+      "role": "STAFF",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": true,
+      "permissions": {
+        "customers": {
+          "view": true,
+          "create": true,
+          "edit": true,
+          "delete": false
+        },
+        "loans": {
+          "view": true,
+          "issue": true,
+          "edit": false,
+          "close": true,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": true,
+          "create": true,
+          "edit": false,
+          "withdraw": true,
+          "renew": true
+        },
+        "rental": {
+          "view": false,
+          "manageComplexes": false,
+          "collectRent": false,
+          "manageExpenses": false,
+          "reports": false
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": false
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Finance Operations",
+      "createdByUid": "uid_admin_001",
+      "createdByEmail": "admin@kkvgoldfinance.com",
+      "createdAt": "2026-09-15T16:21:34.982Z",
+      "updatedAt": "2026-09-15T16:21:37.715Z",
+      "id": "uid_kkv_staff_000003_1789489294816"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-STAFF-000004",
+    "version": 4,
+    "createdAt": "2026-09-15T16:25:33.262Z",
+    "updatedAt": "2026-09-15T16:25:40.187Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:25:40.187Z",
+    "deletedBy": "SYSTEM",
+    "data": {
+      "_id": "usr_1789489533253_vencz",
+      "staffId": "KKV-STAFF-000004",
+      "uid": "uid_kkv_staff_000004_1789489533140",
+      "fullName": "Verified Staff 1975",
+      "displayName": "Verified Staff 1975",
+      "email": "test.staff.1975@kkvgoldfinance.com",
+      "phoneNumber": "9889531975",
+      "phone": "9889531975",
+      "role": "STAFF",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": true,
+      "permissions": {
+        "customers": {
+          "view": true,
+          "create": true,
+          "edit": true,
+          "delete": false
+        },
+        "loans": {
+          "view": true,
+          "issue": true,
+          "edit": false,
+          "close": true,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": true,
+          "create": true,
+          "edit": false,
+          "withdraw": true,
+          "renew": true
+        },
+        "rental": {
+          "view": false,
+          "manageComplexes": false,
+          "collectRent": false,
+          "manageExpenses": false,
+          "reports": false
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": false
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Finance Operations",
+      "createdByUid": "uid_admin_001",
+      "createdByEmail": "admin@kkvgoldfinance.com",
+      "createdAt": "2026-09-15T16:25:33.253Z",
+      "updatedAt": "2026-09-15T16:25:35.751Z",
+      "id": "uid_kkv_staff_000004_1789489533140"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-STAFF-000005",
+    "version": 2,
+    "createdAt": "2026-09-15T16:28:44.000Z",
+    "updatedAt": "2026-09-15T16:28:45.999Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:28:45.999Z",
+    "deletedBy": "SYSTEM",
+    "data": {
+      "_id": "usr_1789489723994_7eleb",
+      "staffId": "KKV-STAFF-000005",
+      "uid": "uid_kkv_staff_000005_1789489723885",
+      "fullName": "Staff Alpha 2941",
+      "displayName": "Staff Alpha 2941",
+      "email": "test.staffa.2941@kkvgoldfinance.com",
+      "phoneNumber": "9889722941",
+      "phone": "9889722941",
+      "role": "STAFF",
+      "passwordHash": "$2b$10$cDV9VM3.q39NnVwB6HmqPuiKstPhMxfOLVkf6pfbYuTxX0hRav8u6",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": true,
+      "permissions": {
+        "customers": {
+          "view": true,
+          "create": true,
+          "edit": true,
+          "delete": false
+        },
+        "loans": {
+          "view": true,
+          "issue": true,
+          "edit": false,
+          "close": true,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": true,
+          "create": true,
+          "edit": false,
+          "withdraw": true,
+          "renew": true
+        },
+        "rental": {
+          "view": false,
+          "manageComplexes": false,
+          "collectRent": false,
+          "manageExpenses": false,
+          "reports": false
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": false
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Finance Operations",
+      "createdByUid": "uid_admin_001",
+      "createdByEmail": "admin@kkvgoldfinance.com",
+      "createdAt": "2026-09-15T16:28:43.994Z",
+      "updatedAt": "2026-09-15T16:28:43.997Z"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-RS-000001",
+    "version": 2,
+    "createdAt": "2026-09-15T16:28:50.083Z",
+    "updatedAt": "2026-09-15T16:28:52.204Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:28:52.204Z",
+    "deletedBy": "SYSTEM",
+    "data": {
+      "_id": "usr_1789489730079_afd6r",
+      "staffId": "KKV-RS-000001",
+      "uid": "uid_kkv_rs_000001_1789489729969",
+      "fullName": "Staff Beta 2941",
+      "displayName": "Staff Beta 2941",
+      "email": "test.staffb.2941@kkvgoldfinance.com",
+      "phoneNumber": "9789726399",
+      "phone": "9789726399",
+      "role": "RENTAL_STAFF",
+      "passwordHash": "$2b$10$jjewnipuLq/8Rrw9ZGlV3.KJWG8Fo3Ab6aMENh.CHW3RYcLOCoaKW",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": true,
+      "permissions": {
+        "customers": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false
+        },
+        "loans": {
+          "view": false,
+          "issue": false,
+          "edit": false,
+          "close": false,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "withdraw": false,
+          "renew": false
+        },
+        "rental": {
+          "view": true,
+          "manageComplexes": true,
+          "collectRent": true,
+          "manageExpenses": true,
+          "reports": true
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": true
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Rental Management",
+      "createdByUid": "uid_admin_001",
+      "createdByEmail": "admin@kkvgoldfinance.com",
+      "createdAt": "2026-09-15T16:28:50.079Z",
+      "updatedAt": "2026-09-15T16:28:50.081Z"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-STAFF-000006",
+    "version": 2,
+    "createdAt": "2026-09-15T16:29:24.568Z",
+    "updatedAt": "2026-09-15T16:29:26.598Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:29:26.598Z",
+    "deletedBy": "SYSTEM",
+    "data": {
+      "_id": "usr_1789489764560_3nl9q",
+      "staffId": "KKV-STAFF-000006",
+      "uid": "uid_kkv_staff_000006_1789489764443",
+      "fullName": "Staff Alpha 3219",
+      "displayName": "Staff Alpha 3219",
+      "email": "test.staffa.3219@kkvgoldfinance.com",
+      "phoneNumber": "9889763219",
+      "phone": "9889763219",
+      "role": "STAFF",
+      "passwordHash": "$2b$10$DRqsCXfRUCwEwwv/ANlbR.VmUiWS/E8UX6H10yv77gsjRas81RzS.",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": true,
+      "permissions": {
+        "customers": {
+          "view": true,
+          "create": true,
+          "edit": true,
+          "delete": false
+        },
+        "loans": {
+          "view": true,
+          "issue": true,
+          "edit": false,
+          "close": true,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": true,
+          "create": true,
+          "edit": false,
+          "withdraw": true,
+          "renew": true
+        },
+        "rental": {
+          "view": false,
+          "manageComplexes": false,
+          "collectRent": false,
+          "manageExpenses": false,
+          "reports": false
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": false
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Finance Operations",
+      "createdByUid": "uid_admin_001",
+      "createdByEmail": "admin@kkvgoldfinance.com",
+      "createdAt": "2026-09-15T16:29:24.560Z",
+      "updatedAt": "2026-09-15T16:29:24.564Z"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-RS-000002",
+    "version": 2,
+    "createdAt": "2026-09-15T16:29:30.784Z",
+    "updatedAt": "2026-09-15T16:29:32.562Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:29:32.562Z",
+    "deletedBy": "SYSTEM",
+    "data": {
+      "_id": "usr_1789489770763_pevuk",
+      "staffId": "KKV-RS-000002",
+      "uid": "uid_kkv_rs_000002_1789489770636",
+      "fullName": "Staff Beta 3219",
+      "displayName": "Staff Beta 3219",
+      "email": "test.staffb.3219@kkvgoldfinance.com",
+      "phoneNumber": "9789767083",
+      "phone": "9789767083",
+      "role": "RENTAL_STAFF",
+      "passwordHash": "$2b$10$gTmEp1HvWvS.P3S061TMZu1XeOgZbRykU9JHo2BbfyxbHrI/frODW",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": true,
+      "permissions": {
+        "customers": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false
+        },
+        "loans": {
+          "view": false,
+          "issue": false,
+          "edit": false,
+          "close": false,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "withdraw": false,
+          "renew": false
+        },
+        "rental": {
+          "view": true,
+          "manageComplexes": true,
+          "collectRent": true,
+          "manageExpenses": true,
+          "reports": true
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": true
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Rental Management",
+      "createdByUid": "uid_admin_001",
+      "createdByEmail": "admin@kkvgoldfinance.com",
+      "createdAt": "2026-09-15T16:29:30.763Z",
+      "updatedAt": "2026-09-15T16:29:30.765Z"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-STAFF-000007",
+    "version": 2,
+    "createdAt": "2026-09-15T16:37:58.755Z",
+    "updatedAt": "2026-09-15T16:38:00.610Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:38:00.610Z",
+    "deletedBy": "SYSTEM",
+    "data": {
+      "_id": "usr_1789490278747_7tzrq",
+      "staffId": "KKV-STAFF-000007",
+      "uid": "uid_kkv_staff_000007_1789490278618",
+      "fullName": "Staff Alpha 7442",
+      "displayName": "Staff Alpha 7442",
+      "email": "test.staffa.7442@kkvgoldfinance.com",
+      "phoneNumber": "9890277442",
+      "phone": "9890277442",
+      "role": "STAFF",
+      "passwordHash": "$2b$10$Vf21.xTgOg/l2XYKhy6tqesoLLWmBQvrLaoXuIJ9WHygtlJWsIpG2",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": true,
+      "permissions": {
+        "customers": {
+          "view": true,
+          "create": true,
+          "edit": true,
+          "delete": false
+        },
+        "loans": {
+          "view": true,
+          "issue": true,
+          "edit": false,
+          "close": true,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": true,
+          "create": true,
+          "edit": false,
+          "withdraw": true,
+          "renew": true
+        },
+        "rental": {
+          "view": false,
+          "manageComplexes": false,
+          "collectRent": false,
+          "manageExpenses": false,
+          "reports": false
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": false
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Finance Operations",
+      "createdByUid": "uid_admin_001",
+      "createdByEmail": "admin@kkvgoldfinance.com",
+      "createdAt": "2026-09-15T16:37:58.747Z",
+      "updatedAt": "2026-09-15T16:37:58.751Z"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-RS-000003",
+    "version": 2,
+    "createdAt": "2026-09-15T16:38:04.750Z",
+    "updatedAt": "2026-09-15T16:38:08.263Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:38:08.263Z",
+    "deletedBy": "SYSTEM",
+    "data": {
+      "_id": "usr_1789490284745_3zm95",
+      "staffId": "KKV-RS-000003",
+      "uid": "uid_kkv_rs_000003_1789490284643",
+      "fullName": "Staff Beta 7442",
+      "displayName": "Staff Beta 7442",
+      "email": "test.staffb.7442@kkvgoldfinance.com",
+      "phoneNumber": "9790281074",
+      "phone": "9790281074",
+      "role": "RENTAL_STAFF",
+      "passwordHash": "$2b$10$9yzUA7pcAVWX1CY/wDdbjuWCc/0XUZ3tTWpLAs8qKZxKesKkCjUxa",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": true,
+      "permissions": {
+        "customers": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false
+        },
+        "loans": {
+          "view": false,
+          "issue": false,
+          "edit": false,
+          "close": false,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "withdraw": false,
+          "renew": false
+        },
+        "rental": {
+          "view": true,
+          "manageComplexes": true,
+          "collectRent": true,
+          "manageExpenses": true,
+          "reports": true
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": true
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Rental Management",
+      "createdByUid": "uid_admin_001",
+      "createdByEmail": "admin@kkvgoldfinance.com",
+      "createdAt": "2026-09-15T16:38:04.745Z",
+      "updatedAt": "2026-09-15T16:38:04.748Z"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-STAFF-000008",
+    "version": 2,
+    "createdAt": "2026-09-15T16:49:18.856Z",
+    "updatedAt": "2026-09-15T16:49:21.806Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:49:21.806Z",
+    "deletedBy": "SYSTEM",
+    "data": {
+      "_id": "usr_1789490958852_3tcy8",
+      "staffId": "KKV-STAFF-000008",
+      "uid": "uid_kkv_staff_000008_1789490958741",
+      "fullName": "Staff Alpha 7040",
+      "displayName": "Staff Alpha 7040",
+      "email": "test.staffa.7040@kkvgoldfinance.com",
+      "phoneNumber": "9890957040",
+      "phone": "9890957040",
+      "role": "STAFF",
+      "passwordHash": "$2b$10$dlHigHI01iRgmlheFAgE/ugSJ.EAsYOuR8P4xSbq6732RNv9MvNLO",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": true,
+      "permissions": {
+        "customers": {
+          "view": true,
+          "create": true,
+          "edit": true,
+          "delete": false
+        },
+        "loans": {
+          "view": true,
+          "issue": true,
+          "edit": false,
+          "close": true,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": true,
+          "create": true,
+          "edit": false,
+          "withdraw": true,
+          "renew": true
+        },
+        "rental": {
+          "view": false,
+          "manageComplexes": false,
+          "collectRent": false,
+          "manageExpenses": false,
+          "reports": false
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": false
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Finance Operations",
+      "createdByUid": "uid_admin_001",
+      "createdByEmail": "admin@kkvgoldfinance.com",
+      "createdAt": "2026-09-15T16:49:18.852Z",
+      "updatedAt": "2026-09-15T16:49:18.854Z"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-RS-000004",
+    "version": 2,
+    "createdAt": "2026-09-15T16:49:24.780Z",
+    "updatedAt": "2026-09-15T16:49:27.889Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:49:27.889Z",
+    "deletedBy": "SYSTEM",
+    "data": {
+      "_id": "usr_1789490964768_rdc0a",
+      "staffId": "KKV-RS-000004",
+      "uid": "uid_kkv_rs_000004_1789490964619",
+      "fullName": "Staff Beta 7040",
+      "displayName": "Staff Beta 7040",
+      "email": "test.staffb.7040@kkvgoldfinance.com",
+      "phoneNumber": "9790964119",
+      "phone": "9790964119",
+      "role": "RENTAL_STAFF",
+      "passwordHash": "$2b$10$wx..fFxOPQl4IPBw7DY7ke4FYilVJhtPpIoadu.klYfwfGbsUVO.e",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": true,
+      "permissions": {
+        "customers": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false
+        },
+        "loans": {
+          "view": false,
+          "issue": false,
+          "edit": false,
+          "close": false,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "withdraw": false,
+          "renew": false
+        },
+        "rental": {
+          "view": true,
+          "manageComplexes": true,
+          "collectRent": true,
+          "manageExpenses": true,
+          "reports": true
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": true
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Rental Management",
+      "createdByUid": "uid_admin_001",
+      "createdByEmail": "admin@kkvgoldfinance.com",
+      "createdAt": "2026-09-15T16:49:24.769Z",
+      "updatedAt": "2026-09-15T16:49:24.774Z"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-STAFF-000009",
+    "version": 2,
+    "createdAt": "2026-09-15T16:58:29.498Z",
+    "updatedAt": "2026-09-15T16:58:31.346Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:58:31.346Z",
+    "deletedBy": "SYSTEM",
+    "data": {
+      "_id": "usr_1789491509490_v885m",
+      "staffId": "KKV-STAFF-000009",
+      "uid": "uid_kkv_staff_000009_1789491509374",
+      "fullName": "Staff Alpha 8251",
+      "displayName": "Staff Alpha 8251",
+      "email": "test.staffa.8251@kkvgoldfinance.com",
+      "phoneNumber": "9891508251",
+      "phone": "9891508251",
+      "role": "STAFF",
+      "passwordHash": "$2b$10$za4HDhi7vAHuNDi8qccsI.U4wIKLdzaMgam2sy63zX1E/CzECp/E.",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": true,
+      "permissions": {
+        "customers": {
+          "view": true,
+          "create": true,
+          "edit": true,
+          "delete": false
+        },
+        "loans": {
+          "view": true,
+          "issue": true,
+          "edit": false,
+          "close": true,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": true,
+          "create": true,
+          "edit": false,
+          "withdraw": true,
+          "renew": true
+        },
+        "rental": {
+          "view": false,
+          "manageComplexes": false,
+          "collectRent": false,
+          "manageExpenses": false,
+          "reports": false
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": false
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Finance Operations",
+      "createdByUid": "uid_admin_001",
+      "createdByEmail": "admin@kkvgoldfinance.com",
+      "createdAt": "2026-09-15T16:58:29.490Z",
+      "updatedAt": "2026-09-15T16:58:29.494Z"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-RS-000005",
+    "version": 2,
+    "createdAt": "2026-09-15T16:58:36.149Z",
+    "updatedAt": "2026-09-15T16:58:38.213Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T16:58:38.213Z",
+    "deletedBy": "SYSTEM",
+    "data": {
+      "_id": "usr_1789491516144_wysxb",
+      "staffId": "KKV-RS-000005",
+      "uid": "uid_kkv_rs_000005_1789491516044",
+      "fullName": "Staff Beta 8251",
+      "displayName": "Staff Beta 8251",
+      "email": "test.staffb.8251@kkvgoldfinance.com",
+      "phoneNumber": "9791511800",
+      "phone": "9791511800",
+      "role": "RENTAL_STAFF",
+      "passwordHash": "$2b$10$A9Fe9eZbG0uHRlzXZHhfke4TCAnWD.PBrq3XSZw7H1YM5/kZvFegC",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": true,
+      "permissions": {
+        "customers": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false
+        },
+        "loans": {
+          "view": false,
+          "issue": false,
+          "edit": false,
+          "close": false,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "withdraw": false,
+          "renew": false
+        },
+        "rental": {
+          "view": true,
+          "manageComplexes": true,
+          "collectRent": true,
+          "manageExpenses": true,
+          "reports": true
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": true
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Rental Management",
+      "createdByUid": "uid_admin_001",
+      "createdByEmail": "admin@kkvgoldfinance.com",
+      "createdAt": "2026-09-15T16:58:36.144Z",
+      "updatedAt": "2026-09-15T16:58:36.146Z"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-STAFF-000010",
+    "version": 2,
+    "createdAt": "2026-09-15T17:02:56.434Z",
+    "updatedAt": "2026-09-15T17:02:58.397Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T17:02:58.397Z",
+    "deletedBy": "SYSTEM",
+    "data": {
+      "_id": "usr_1789491776428_yzgbm",
+      "staffId": "KKV-STAFF-000010",
+      "uid": "uid_kkv_staff_000010_1789491776310",
+      "fullName": "Staff Alpha 5207",
+      "displayName": "Staff Alpha 5207",
+      "email": "test.staffa.5207@kkvgoldfinance.com",
+      "phoneNumber": "9891775207",
+      "phone": "9891775207",
+      "role": "STAFF",
+      "passwordHash": "$2b$10$BjhIYUa7eXYEwzp56PNItOkR0g8wixg/tmoVMxEjP.O4MaInW5aV6",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": true,
+      "permissions": {
+        "customers": {
+          "view": true,
+          "create": true,
+          "edit": true,
+          "delete": false
+        },
+        "loans": {
+          "view": true,
+          "issue": true,
+          "edit": false,
+          "close": true,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": true,
+          "create": true,
+          "edit": false,
+          "withdraw": true,
+          "renew": true
+        },
+        "rental": {
+          "view": false,
+          "manageComplexes": false,
+          "collectRent": false,
+          "manageExpenses": false,
+          "reports": false
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": false
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Finance Operations",
+      "createdByUid": "uid_admin_001",
+      "createdByEmail": "admin@kkvgoldfinance.com",
+      "createdAt": "2026-09-15T17:02:56.428Z",
+      "updatedAt": "2026-09-15T17:02:56.430Z"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-RS-000006",
+    "version": 2,
+    "createdAt": "2026-09-15T17:03:02.820Z",
+    "updatedAt": "2026-09-15T17:03:05.328Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T17:03:05.328Z",
+    "deletedBy": "SYSTEM",
+    "data": {
+      "_id": "usr_1789491782814_alp4e",
+      "staffId": "KKV-RS-000006",
+      "uid": "uid_kkv_rs_000006_1789491782702",
+      "fullName": "Staff Beta 5207",
+      "displayName": "Staff Beta 5207",
+      "email": "test.staffb.5207@kkvgoldfinance.com",
+      "phoneNumber": "9791779042",
+      "phone": "9791779042",
+      "role": "RENTAL_STAFF",
+      "passwordHash": "$2b$10$uewXlMD8PnPNKUhckdeKUue8ttBal2WcgFO8KM/X2vYw0ic9tF1OK",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": true,
+      "permissions": {
+        "customers": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false
+        },
+        "loans": {
+          "view": false,
+          "issue": false,
+          "edit": false,
+          "close": false,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "withdraw": false,
+          "renew": false
+        },
+        "rental": {
+          "view": true,
+          "manageComplexes": true,
+          "collectRent": true,
+          "manageExpenses": true,
+          "reports": true
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": true
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Rental Management",
+      "createdByUid": "uid_admin_001",
+      "createdByEmail": "admin@kkvgoldfinance.com",
+      "createdAt": "2026-09-15T17:03:02.814Z",
+      "updatedAt": "2026-09-15T17:03:02.818Z"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-STAFF-000011",
+    "version": 2,
+    "createdAt": "2026-09-15T17:09:07.601Z",
+    "updatedAt": "2026-09-15T17:09:09.724Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T17:09:09.724Z",
+    "deletedBy": "SYSTEM",
+    "data": {
+      "_id": "usr_1789492147595_in6yx",
+      "staffId": "KKV-STAFF-000011",
+      "uid": "uid_kkv_staff_000011_1789492147481",
+      "fullName": "Staff Alpha 6192",
+      "displayName": "Staff Alpha 6192",
+      "email": "test.staffa.6192@kkvgoldfinance.com",
+      "phoneNumber": "9892146192",
+      "phone": "9892146192",
+      "role": "STAFF",
+      "passwordHash": "$2b$10$VfLdSna0EGc0Y2LhLGQby./wWYTkoC4atgcX0R0ls/.YVQd1eJLBu",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": true,
+      "permissions": {
+        "customers": {
+          "view": true,
+          "create": true,
+          "edit": true,
+          "delete": false
+        },
+        "loans": {
+          "view": true,
+          "issue": true,
+          "edit": false,
+          "close": true,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": true,
+          "create": true,
+          "edit": false,
+          "withdraw": true,
+          "renew": true
+        },
+        "rental": {
+          "view": false,
+          "manageComplexes": false,
+          "collectRent": false,
+          "manageExpenses": false,
+          "reports": false
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": false
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Finance Operations",
+      "createdByUid": "uid_admin_001",
+      "createdByEmail": "admin@kkvgoldfinance.com",
+      "createdAt": "2026-09-15T17:09:07.595Z",
+      "updatedAt": "2026-09-15T17:09:07.598Z"
+    }
+  },
+  {
+    "app": "KKV_GOLD_FINANCE",
+    "marker": "KKV_APP_RECORD",
+    "type": "USER",
+    "id": "KKV-RS-000007",
+    "version": 2,
+    "createdAt": "2026-09-15T17:09:13.938Z",
+    "updatedAt": "2026-09-15T17:09:15.976Z",
+    "isDeleted": true,
+    "deletedAt": "2026-09-15T17:09:15.976Z",
+    "deletedBy": "SYSTEM",
+    "data": {
+      "_id": "usr_1789492153933_zpt9p",
+      "staffId": "KKV-RS-000007",
+      "uid": "uid_kkv_rs_000007_1789492153835",
+      "fullName": "Staff Beta 6192",
+      "displayName": "Staff Beta 6192",
+      "email": "test.staffb.6192@kkvgoldfinance.com",
+      "phoneNumber": "9792150162",
+      "phone": "9792150162",
+      "role": "RENTAL_STAFF",
+      "passwordHash": "$2b$10$8ymsLK0JOPwjHVeEIjoXQODewkb1dXSSfndWcAYjauRS7WZqBoiaK",
+      "status": "active",
+      "isActive": true,
+      "mustChangePassword": true,
+      "permissions": {
+        "customers": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false
+        },
+        "loans": {
+          "view": false,
+          "issue": false,
+          "edit": false,
+          "close": false,
+          "reopen": false
+        },
+        "fixedDeposits": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "withdraw": false,
+          "renew": false
+        },
+        "rental": {
+          "view": true,
+          "manageComplexes": true,
+          "collectRent": true,
+          "manageExpenses": true,
+          "reports": true
+        },
+        "dayBook": {
+          "view": true,
+          "addEntry": true,
+          "editEntry": false,
+          "deleteEntry": false
+        },
+        "staffManagement": {
+          "view": false,
+          "create": false,
+          "edit": false,
+          "delete": false,
+          "toggleStatus": false
+        },
+        "reports": {
+          "view": true,
+          "export": true
+        },
+        "settings": {
+          "view": false,
+          "editRates": false,
+          "editCompany": false
+        },
+        "backupRestore": {
+          "createBackup": false,
+          "restoreBackup": false
+        }
+      },
+      "department": "Rental Management",
+      "createdByUid": "uid_admin_001",
+      "createdByEmail": "admin@kkvgoldfinance.com",
+      "createdAt": "2026-09-15T17:09:13.933Z",
+      "updatedAt": "2026-09-15T17:09:13.935Z"
+    }
+  }
+]
