@@ -66,32 +66,63 @@ export const createLoan = async (req: Request, res: Response) => {
 };
 
 export const updateLoan = async (req: Request, res: Response) => {
-  const updated = await loanService.updateAsync(req.params.id || req.params.loanNo, req.body);
-  if (!updated) {
-    return res.status(404).json({
+  try {
+    const loanId = req.params.id || req.params.loanNo;
+    const actor = req.user
+      ? {
+          uid: req.user.staffId || req.user.id || req.user._id,
+          email: req.user.email,
+          role: req.user.role,
+          name: req.user.name || req.user.displayName
+        }
+      : undefined;
+    const ipAddress = req.ip || req.socket?.remoteAddress || '';
+    const userAgent = (req.headers['user-agent'] as string) || '';
+
+    const updated = await loanService.adminUpdateLoanAsync(loanId, req.body, actor, { ipAddress, userAgent });
+    return res.json({
+      success: true,
+      message: `Loan ${updated.loanNo} updated successfully`,
+      data: updated
+    });
+  } catch (err: any) {
+    const statusCode = err.statusCode || (err.code === 'NOT_FOUND' ? 404 : 400);
+    return res.status(statusCode).json({
       success: false,
-      message: 'Loan not found'
+      error: err.code || 'UPDATE_LOAN_FAILED',
+      message: err.message || 'Failed to update loan'
     });
   }
-  return res.json({
-    success: true,
-    message: 'Loan updated successfully',
-    data: updated
-  });
 };
 
 export const deleteLoan = async (req: Request, res: Response) => {
-  const deleted = await loanService.deleteAsync(req.params.id || req.params.loanNo);
-  if (!deleted) {
-    return res.status(404).json({
+  try {
+    const loanId = req.params.id || req.params.loanNo;
+    const reason = req.body?.reason || (req.query?.reason as string);
+    const actor = req.user
+      ? {
+          uid: req.user.staffId || req.user.id || req.user._id,
+          email: req.user.email,
+          role: req.user.role,
+          name: req.user.name || req.user.displayName
+        }
+      : undefined;
+    const ipAddress = req.ip || req.socket?.remoteAddress || '';
+    const userAgent = (req.headers['user-agent'] as string) || '';
+
+    const result = await loanService.adminDeleteLoanAsync(loanId, reason, actor, { ipAddress, userAgent });
+    return res.json({
+      success: true,
+      message: result.message || 'Loan deleted successfully'
+    });
+  } catch (err: any) {
+    const statusCode = err.statusCode || (err.code === 'NOT_FOUND' ? 404 : 400);
+    return res.status(statusCode).json({
       success: false,
-      message: 'Loan not found'
+      error: err.code || 'DELETE_LOAN_FAILED',
+      message: err.message || 'Failed to delete loan'
     });
   }
-  return res.json({
-    success: true,
-    message: 'Loan deleted successfully'
-  });
 };
 
 export const closeLoan = async (req: Request, res: Response) => {
@@ -120,7 +151,17 @@ export const getLoanPayments = async (req: Request, res: Response) => {
 
 export const addLoanPayment = async (req: Request, res: Response) => {
   try {
-    const newReceipt = await receiptService.create(req.body);
+    const targetLoanId = req.params.id || req.params.loanNo;
+    const loan = await loanService.getByIdAsync(targetLoanId);
+    const receiptPayload = {
+      ...req.body,
+      loanId: loan?.id || targetLoanId,
+      loanNo: loan?.loanNo || targetLoanId,
+      customerId: loan?.customerId || req.body.customerId,
+      customerName: loan?.customerName || req.body.customerName,
+      kind: req.body.kind || req.body.paymentType || 'PART PAYMENT'
+    };
+    const newReceipt = await receiptService.create(receiptPayload, req.user);
     return res.status(201).json({
       success: true,
       message: 'Payment recorded successfully',

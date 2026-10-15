@@ -1,5 +1,5 @@
 import Decimal from 'decimal.js';
-import { telegramRepository } from '../telegram/telegram.repository.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 import { DayBookEntry, Loan, FixedDeposit } from '../types/index.js';
 
 export class AccountingService {
@@ -8,7 +8,7 @@ export class AccountingService {
   }
 
   public getDayBook(): DayBookEntry[] {
-    return telegramRepository.getRecords<DayBookEntry>('DAYBOOK');
+    return firestoreRepository.getRecords<DayBookEntry>('DAYBOOK');
   }
 
   public getBalances(): { cashInHand: number; cashAtBank: number } {
@@ -56,7 +56,7 @@ export class AccountingService {
       date: entryData.date || new Date().toLocaleDateString('en-GB')
     };
 
-    await telegramRepository.createRecord('DAYBOOK', id, newEntry, actor);
+    await firestoreRepository.createRecord('DAYBOOK', id, newEntry, actor);
     return newEntry;
   }
 
@@ -85,14 +85,14 @@ export class AccountingService {
       date: entryData.date || new Date().toLocaleDateString('en-GB')
     };
 
-    telegramRepository.createRecord('DAYBOOK', id, newEntry).catch(() => {});
+    firestoreRepository.createRecord('DAYBOOK', id, newEntry).catch(() => {});
     return newEntry;
   }
 
   public async getTrialBalance(): Promise<any[]> {
     const balances = this.getBalances();
-    const loans = telegramRepository.getRecords<Loan>('LOAN');
-    const fds = telegramRepository.getRecords<FixedDeposit>('FIXED_DEPOSIT');
+    const loans = firestoreRepository.getRecords<Loan>('LOAN');
+    const fds = firestoreRepository.getRecords<FixedDeposit>('FIXED_DEPOSIT');
 
     const goldLoanPortfolio = loans
       .filter((l) => !l.isDeleted && (l.status === 'ACTIVE' || l.status === 'OVERDUE'))
@@ -160,8 +160,8 @@ export class AccountingService {
 
   public async getBalanceSheet(): Promise<any> {
     const balances = this.getBalances();
-    const loans = telegramRepository.getRecords<Loan>('LOAN');
-    const fds = telegramRepository.getRecords<FixedDeposit>('FIXED_DEPOSIT');
+    const loans = firestoreRepository.getRecords<Loan>('LOAN');
+    const fds = firestoreRepository.getRecords<FixedDeposit>('FIXED_DEPOSIT');
 
     const goldLoanPortfolio = loans
       .filter((l) => !l.isDeleted && (l.status === 'ACTIVE' || l.status === 'OVERDUE'))

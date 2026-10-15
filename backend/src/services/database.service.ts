@@ -1,5 +1,5 @@
-import { telegramRepository } from '../telegram/telegram.repository.js';
-import { EntityType } from '../telegram/telegram.types.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
+import { EntityType } from '../repositories/entity.types.js';
 
 export interface ConcurrencyError extends Error {
   statusCode: number;
@@ -41,14 +41,14 @@ export class DatabaseService {
     }
 
     const key = idempotencyKey.trim();
-    const existing = telegramRepository.getRecordById<any>('SETTINGS', `idempotency_${key}`);
+    const existing = firestoreRepository.getRecordById<any>('SETTINGS', `idempotency_${key}`);
     if (existing && existing.data?.response) {
       return { handled: true, result: existing.data.response as T };
     }
 
     if (operation) {
       const result = await operation();
-      await telegramRepository.createRecord('SETTINGS', `idempotency_${key}`, {
+      await firestoreRepository.createRecord('SETTINGS', `idempotency_${key}`, {
         key,
         response: result,
         createdAt: new Date().toISOString()
@@ -60,25 +60,25 @@ export class DatabaseService {
   }
 
   /**
-   * Generic GetAll backed by Telegram repository
+   * Generic GetAll backed by Cloud Firestore repository
    */
   async getAll<T extends { id?: string }>(collection: string): Promise<T[]> {
     const type = mapCollectionToEntityType(collection);
-    return telegramRepository.getRecords<T>(type);
+    return firestoreRepository.getRecords<T>(type);
   }
 
   /**
-   * Generic GetById backed by Telegram repository
+   * Generic GetById backed by Cloud Firestore repository
    */
   async getById<T extends { id?: string; loanNo?: string; fdNo?: string; uid?: string }>(
     collection: string,
     id: string
   ): Promise<T | null> {
     const type = mapCollectionToEntityType(collection);
-    const env = telegramRepository.getRecordById<T>(type, id);
+    const env = firestoreRepository.getRecordById<T>(type, id);
     if (env) return env.data;
 
-    const all = telegramRepository.getRecords<T>(type);
+    const all = firestoreRepository.getRecords<T>(type);
     return all.find((i) => i.id === id || i.loanNo === id || i.fdNo === id || i.uid === id) || null;
   }
 
@@ -91,7 +91,7 @@ export class DatabaseService {
   ): Promise<T> {
     const type = mapCollectionToEntityType(collection);
     const id = item.id || (item as any).loanNo || (item as any).fdNo || `rec_${Date.now()}`;
-    const env = await telegramRepository.createRecord(type, id, item);
+    const env = await firestoreRepository.createRecord(type, id, item);
     return env.data;
   }
 
@@ -105,7 +105,7 @@ export class DatabaseService {
     expectedVersion?: number
   ): Promise<T | null> {
     const type = mapCollectionToEntityType(collection);
-    const env = await telegramRepository.updateRecord(type, id, updates, { expectedVersion });
+    const env = await firestoreRepository.updateRecord(type, id, updates, { expectedVersion });
     return env.data;
   }
 
@@ -114,7 +114,7 @@ export class DatabaseService {
    */
   async delete(collection: string, id: string, softDelete: boolean = true): Promise<boolean> {
     const type = mapCollectionToEntityType(collection);
-    const res = await telegramRepository.deleteRecord(type, id, !softDelete);
+    const res = await firestoreRepository.deleteRecord(type, id, !softDelete);
     return res.success;
   }
 
@@ -133,10 +133,11 @@ export class DatabaseService {
     migratedCounts: Record<string, number>;
     message: string;
   }> {
+    await firestoreRepository.syncWithFirestore();
     return {
       success: true,
       migratedCounts: {},
-      message: 'Persistence layer is running on Telegram Bot API.'
+      message: 'Cloud Firestore is active and primary database.'
     };
   }
 }

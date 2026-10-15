@@ -24,6 +24,8 @@ export type NavPage =
   | 'deposit-withdrawal'
   | 'withdrawal-display'
   | 'fd-customers-deposits'
+  | 'fd-receipt'
+  | 'fd-receipt-display'
   | 'day-book'
   | 'trial-balance'
   | 'profit-loss'
@@ -459,6 +461,8 @@ export interface FixedDeposit {
   nomineeRelation?: string;
   nominee?: NomineeDetails;
   remarks?: string;
+  receiptNumber?: string;
+  receiptGeneratedAt?: string;
   items?: OrnamentItem[];
   photos?: string[];
 
@@ -468,21 +472,46 @@ export interface FixedDeposit {
   calculationMethodSnapshot?: string;
   minimumAmountSnapshot?: number;
   configurationVersion?: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface FDInterestPayout {
   id: string;
+  payoutId?: string;
+  voucherNumber?: string;
+  voucherGeneratedAt?: string;
   fdId?: string;
   fdNo: string;
   customerId?: string;
   depositorName: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  principalAtPayment?: number;
+  interestRatePA?: number;
+  monthlyPayout?: number;
+  tenureMonths?: number;
   amount: number;
-  dueDate?: string;
   date: string;
+  dueDate?: string;
+  startDate?: string;
   periodKey?: string;
+  periodLabel?: string;
+  earnedInterest?: number;
+  pendingInterestBefore?: number;
+  pendingInterestAfter?: number;
   payoutFrequency?: string;
   mode: 'Cash' | 'Bank' | 'UPI' | string;
+  bankName?: string;
+  transactionReference?: string;
+  upiId?: string;
+  remarks?: string;
+  processedBy?: string;
   status: 'PAID' | 'PENDING';
+  branchId?: string;
+  complexId?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface FDWithdrawal {
@@ -560,9 +589,7 @@ export interface CustomerPhotoData {
   size?: number;
   uploadedAt?: string | Date;
   publicId?: string;
-  telegramFileId?: string;
-  telegramMessageId?: number;
-  telegramChatId?: string;
+  storagePath?: string;
   uploadedBy?: string;
 }
 
@@ -584,9 +611,7 @@ export interface CustomerKycDocument {
   size?: number;
   uploadedAt?: string | Date;
   publicId?: string;
-  telegramFileId?: string;
-  telegramMessageId?: number;
-  telegramChatId?: string;
+  storagePath?: string;
   resourceType?: string;
   uploadedBy?: string;
 }
@@ -758,12 +783,11 @@ export interface WhatsAppTemplates {
   receiptMessage: string;
 }
 
-export interface TelegramConfig {
-  botToken: string;
-  chatId: string;
+export interface FirebaseCloudConfig {
+  projectId: string;
   isSecured: boolean;
-  autoBackupOnOpen: boolean;
-  lastBackupDate?: string;
+  autoSync: boolean;
+  lastSyncDate?: string;
 }
 
 export interface DeviceInfo {

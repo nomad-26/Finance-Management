@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useApp, defaultLoanTypes } from '../context/AppContext';
-import { Users, CreditCard, DollarSign, CheckCircle2, PiggyBank, Wallet, Building2, Bell, Database, X, Save, Lock, Plus, Trash2, Search, Eye, Edit3, RotateCcw, AlertTriangle, Clock, Percent, Monitor, Smartphone, Tablet, Laptop, Activity, LogOut, RefreshCw, Shield, Info, Upload } from 'lucide-react';
-import { AmountBand, Customer, DeviceSession, OverdueEscalationTier } from '../types';
-import { formatRelativeTime, maskIpAddress } from '../utils/deviceUtils';
+import { Users, CreditCard, DollarSign, CheckCircle2, PiggyBank, Wallet, Building2, Bell, Database, X, Save, Lock, Plus, Trash2, Search, Eye, Edit3, RotateCcw, AlertTriangle, Clock, Percent, RefreshCw, Sliders } from 'lucide-react';
+import { AmountBand, Customer, OverdueEscalationTier, Loan } from '../types';
 import { getOverdueEscalationDetails } from '../utils/loanCalculationUtils';
 
 import { KKVLogo } from '../components/common/KKVLogo';
 import { WipeAllDataModal } from '../components/admin/WipeAllDataModal';
-import { SystemRestoreModal } from '../components/admin/SystemRestoreModal';
+import { DatabaseRestoreModal } from '../components/admin/DatabaseRestoreModal';
+import { DatabaseBackupRecoverySection } from '../components/admin/DatabaseBackupRecoverySection';
 import { ViewCustomerModal } from '../components/common/ViewCustomerModal';
+import { EditLoanModal } from '../components/admin/EditLoanModal';
+import { DeleteLoanModal } from '../components/admin/DeleteLoanModal';
 import { LoanConfigurationSection } from '../components/admin/LoanConfigurationSection';
 import { FDConfigurationSection } from '../components/admin/FDConfigurationSection';
+import { ConfigurationCenterModal } from '../components/config/ConfigurationCenterModal';
 import { PurityManagementSection } from '../components/admin/PurityManagementSection';
 import { getCanonicalCustomerId, isMatchingCustomerId } from '../utils/customerUtils';
 import {
@@ -23,11 +26,12 @@ import {
 import { rentalApi } from '../modules/rental/services/rentalApi';
 import { AdminRentalSummary } from '../modules/rental/types/rental.types';
 import { RentalAdminView } from '../modules/rental/components/RentalAdminView';
-import { getStoredAuthToken, fetchWithAuth, isTokenExpired } from '../services/api';
+import { apiService, getStoredAuthToken, fetchWithAuth, isTokenExpired } from '../services/api';
 
 export const AdminPanel: React.FC = () => {
   const [showWipeModal, setShowWipeModal] = useState(false);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [showConfigCenterModal, setShowConfigCenterModal] = useState(false);
   const {
     userRole,
     loans,
@@ -48,25 +52,24 @@ export const AdminPanel: React.FC = () => {
     updateWhatsAppTemplates,
     resetAllData,
     reloadAllData,
-    bulkUpdateFixedDepositDates,
     deleteCustomer,
     restoreCustomer,
     deleteCustomerPermanently,
     fdInterestPayouts,
     setSelectedProfileCustomerId,
+    setSelectedLoan,
     setCurrentPage,
     startEditCustomer,
-    showToast,
-    sessions,
-    currentSessionId,
-    fetchSessions,
-    revokeSessionById,
-    revokeOtherSessionsExceptCurrent
+    showToast
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'customers' | 'bulk-fd' | 'devices' | 'rental'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'customers' | 'loans' | 'rental'>('overview');
   const [custSubTab, setCustSubTab] = useState<'active' | 'deleted'>('active');
   const [adminCustSearch, setAdminCustSearch] = useState('');
+  const [adminLoanSearch, setAdminLoanSearch] = useState('');
+  const [adminLoanStatus, setAdminLoanStatus] = useState<'ALL' | 'ACTIVE' | 'CLOSED' | 'OVERDUE' | 'PENDING'>('ALL');
+  const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
+  const [deletingLoan, setDeletingLoan] = useState<Loan | null>(null);
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
   const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
   const [permanentDeleteTarget, setPermanentDeleteTarget] = useState<Customer | null>(null);
@@ -76,6 +79,25 @@ export const AdminPanel: React.FC = () => {
   const [masterSubTab, setMasterSubTab] = useState<'rates' | 'loan-config' | 'fd-config' | 'purity' | 'operations' | 'messaging' | 'security' | 'danger'>('rates');
   // string type so it can hold any loanTypeId (e.g. 'gold-loan', 'silver-loan', 'diamond-loan') OR 'card'/'overdue'/'upi'
   const [ratesSubChip, setRatesSubChip] = useState<string>('gold-loan');
+  const [isClearingSync, setIsClearingSync] = useState(false);
+
+  const handleClearSyncCache = async () => {
+    if (!window.confirm('Are you sure you want to synchronize with Cloud Firestore and refresh data?')) return;
+    setIsClearingSync(true);
+    try {
+      const res = await apiService.clearSyncCache();
+      if (res.success) {
+        showToast('Cloud Firestore synchronization complete!', 'success');
+        await reloadAllData();
+      } else {
+        throw new Error(res.message || 'Failed to clear sync cache');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Error clearing sync cache', 'error');
+    } finally {
+      setIsClearingSync(false);
+    }
+  };
 
   // ── Rental Management Summary State (Section 28 & 29) ───────────────────────
   const [rentalSummary, setRentalSummary] = useState<AdminRentalSummary | null>(null);
@@ -105,20 +127,6 @@ export const AdminPanel: React.FC = () => {
       }
     };
     fetchRentalSummary();
-  }, [activeTab]);
-
-  // ── Devices & Active Sessions State ─────────────────────────────────────────
-  const [deviceFilter, setDeviceFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE' | 'CURRENT' | 'MOBILE' | 'DESKTOP'>('ALL');
-  const [deviceSearch, setDeviceSearch] = useState<string>('');
-  const [selectedSessionForDetails, setSelectedSessionForDetails] = useState<DeviceSession | null>(null);
-  const [sessionToRevoke, setSessionToRevoke] = useState<DeviceSession | null>(null);
-  const [showRevokeAllOthersModal, setShowRevokeAllOthersModal] = useState<boolean>(false);
-  const [isRevoking, setIsRevoking] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (activeTab === 'devices') {
-      fetchSessions();
-    }
   }, [activeTab]);
 
   // ── Rates & Payments — unified per-loan-type config map ─────────────────────
@@ -198,7 +206,6 @@ export const AdminPanel: React.FC = () => {
   // Operations Feature Toggles
   const [animationsEnabled, setAnimationsEnabled] = useState<boolean>(masterControlSettings?.animationsEnabled ?? true);
   const [performanceModeEnabled, setPerformanceModeEnabled] = useState<boolean>(masterControlSettings?.performanceModeEnabled ?? false);
-  const [bulkFdDateChangeEnabled, setBulkFdDateChangeEnabled] = useState<boolean>(masterControlSettings?.bulkFdDateChangeEnabled ?? true);
   const [lockersEnabled, setLockersEnabled] = useState<boolean>(masterControlSettings?.lockersEnabled ?? false);
 
   // Operations lists states
@@ -225,18 +232,10 @@ export const AdminPanel: React.FC = () => {
   const [newInsCompanyInput, setNewInsCompanyInput] = useState('');
   const [newShowroomInput, setNewShowroomInput] = useState('');
 
-  // Bulk FD Date Change states
-  const [selectedFdNos, setSelectedFdNos] = useState<string[]>([]);
-  const [dateMode, setDateMode] = useState<'shift' | 'set'>('shift');
-  const [offsetDaysValue, setOffsetDaysValue] = useState<number | ''>(0);
-  const [newDepDateVal, setNewDepDateVal] = useState<string>('');
-  const [fdSearchText, setFdSearchText] = useState('');
-
   useEffect(() => {
     if (masterControlSettings) {
       setAnimationsEnabled(masterControlSettings.animationsEnabled ?? true);
       setPerformanceModeEnabled(masterControlSettings.performanceModeEnabled ?? false);
-      setBulkFdDateChangeEnabled(masterControlSettings.bulkFdDateChangeEnabled ?? true);
       setLockersEnabled(masterControlSettings.lockersEnabled ?? false);
 
       setCardFee(masterControlSettings.defaultCardFee ?? 10);
@@ -291,13 +290,6 @@ export const AdminPanel: React.FC = () => {
       setReceiptTpl(whatsAppTemplates.receiptMessage || '');
     }
   }, [whatsAppTemplates]);
-
-  // Redirect away from bulk-fd tab if disabled
-  useEffect(() => {
-    if (masterControlSettings && !masterControlSettings.bulkFdDateChangeEnabled && activeTab === 'bulk-fd') {
-      setActiveTab('overview');
-    }
-  }, [masterControlSettings, activeTab]);
 
   // Defensive Aggregates with safe array checks
   const safeLoans = loans || [];
@@ -439,7 +431,6 @@ export const AdminPanel: React.FC = () => {
       },
       animationsEnabled,
       performanceModeEnabled,
-      bulkFdDateChangeEnabled,
       lockersEnabled,
       defaultCardFee: numCardFee,
       overdueInterestRatePA: numOverdueRate,
@@ -578,6 +569,27 @@ export const AdminPanel: React.FC = () => {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button
+            type="button"
+            onClick={() => setShowConfigCenterModal(true)}
+            style={{
+              fontSize: '12px',
+              backgroundColor: '#FFFFFF',
+              color: '#176B52',
+              border: '1px solid #176B52',
+              padding: '6px 14px',
+              borderRadius: 'var(--radius-full)',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
+            }}
+          >
+            <Sliders size={13} />
+            <span>Storage &amp; Safety</span>
+          </button>
           <span style={{ fontSize: '12px', background: 'var(--color-gold-subtle)', color: 'var(--color-gold-light)', padding: '6px 14px', borderRadius: 'var(--radius-full)', fontWeight: 700, border: '1px solid rgba(201, 162, 39, 0.25)' }}>🟢 ADMIN SESSION ACTIVE</span>
         </div>
       </div>
@@ -587,10 +599,9 @@ export const AdminPanel: React.FC = () => {
         {[
           { key: 'overview', label: 'Overview' },
           { key: 'customers', label: 'Customer Management' },
-          { key: 'rental', label: 'Complex Rental' },
-          masterControlSettings?.bulkFdDateChangeEnabled && { key: 'bulk-fd', label: 'Bulk FD Date Change' },
-          { key: 'devices', label: 'Devices' }
-        ].filter((x): x is { key: string; label: string } => !!x).map((t) => (
+          { key: 'loans', label: 'Loan Management' },
+          { key: 'rental', label: 'Complex Rental' }
+        ].map((t) => (
           <button
             key={t.key}
             type="button"
@@ -1173,7 +1184,7 @@ export const AdminPanel: React.FC = () => {
                                       <button
                                         className="icon-button"
                                         style={{ width: '28px', height: '28px', color: 'var(--color-danger, #ef4444)' }}
-                                        title="Delete Customer (Master Admin Only)"
+                                        title="Move to Deleted Customers"
                                         onClick={() => setDeletingCustomer(c)}
                                       >
                                         <Trash2 size={13} />
@@ -1195,818 +1206,277 @@ export const AdminPanel: React.FC = () => {
         );
       })()}
 
-      {/* ========================================================================= */}
-      {activeTab === 'bulk-fd' && masterControlSettings?.bulkFdDateChangeEnabled && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div className="card" style={{ padding: '24px' }}>
-            <div className="card-header" style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-              <div>
-                <h2 className="card-title" style={{ fontSize: '18px', fontWeight: 800 }}>Bulk Fixed Deposit Date Change</h2>
-                <p className="card-description">Modify deposit dates in bulk for selected Fixed Deposits. Daybook entry dates will automatically synchronize.</p>
-              </div>
-              {safeFixedDeposits.length > 0 && (
-                <span className="badge badge-success">
-                  {safeFixedDeposits.filter((f) => f.status === 'ACTIVE').length} Active FDs
-                </span>
-              )}
-            </div>
-
-            {safeFixedDeposits.length === 0 ? (
-              <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                No fixed deposits in this company yet.
-              </div>
-            ) : (
-              <>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', marginBottom: '20px' }}>
-                  <div style={{ position: 'relative', flex: 1, minWidth: '280px' }}>
-                    <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                    <input
-                      type="text"
-                      placeholder="Search deposits by name, FD no, or phone..."
-                      className="input-control"
-                      style={{ paddingLeft: '36px', width: '100%' }}
-                      value={fdSearchText}
-                      onChange={(e) => setFdSearchText(e.target.value)}
-                    />
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      type="button"
-                      className={`btn btn-sm ${dateMode === 'shift' ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ height: '38px', borderRadius: 'var(--radius-md)', fontWeight: 600 }}
-                      onClick={() => setDateMode('shift')}
-                    >
-                      Shift by Days
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn btn-sm ${dateMode === 'set' ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ height: '38px', borderRadius: 'var(--radius-md)', fontWeight: 600 }}
-                      onClick={() => setDateMode('set')}
-                    >
-                      Set Specific Date
-                    </button>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end', backgroundColor: 'var(--bg-surface-secondary)', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', marginBottom: '20px' }}>
-                  {dateMode === 'shift' ? (
-                    <div className="form-group" style={{ margin: 0, flex: '1 1 200px' }}>
-                      <label className="form-label required">DAYS TO SHIFT (+/-)</label>
-                      <input
-                        type="number"
-                        className="input-control"
-                        placeholder="e.g. 5 or -10"
-                        value={offsetDaysValue}
-                        onChange={(e) => setOffsetDaysValue(e.target.value === '' ? '' : Number(e.target.value))}
-                      />
-                    </div>
-                  ) : (
-                    <div className="form-group" style={{ margin: 0, flex: '1 1 200px' }}>
-                      <label className="form-label required">NEW DEPOSIT DATE</label>
-                      <input
-                        type="date"
-                        className="input-control"
-                        value={newDepDateVal}
-                        onChange={(e) => setNewDepDateVal(e.target.value)}
-                      />
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    style={{ height: '38px', fontWeight: 700 }}
-                    disabled={selectedFdNos.length === 0 || (dateMode === 'shift' && !offsetDaysValue) || (dateMode === 'set' && !newDepDateVal)}
-                    onClick={async () => {
-                      let formattedDate: string | undefined = undefined;
-                      if (dateMode === 'set' && newDepDateVal) {
-                        const [yyyy, mm, dd] = newDepDateVal.split('-');
-                        formattedDate = `${dd}/${mm}/${yyyy}`;
-                      }
-
-                      const success = await bulkUpdateFixedDepositDates(
-                        selectedFdNos,
-                        formattedDate,
-                        dateMode === 'shift' ? (Number(offsetDaysValue) || 0) : undefined
-                      );
-                      if (success) {
-                        setSelectedFdNos([]);
-                        setOffsetDaysValue(0);
-                        setNewDepDateVal('');
-                      }
-                    }}
-                  >
-                    Apply Change ({selectedFdNos.length} Selected)
-                  </button>
-                </div>
-
-                <div className="table-container">
-                  <table className="custom-table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: '40px' }}>
-                          <input
-                            type="checkbox"
-                            checked={selectedFdNos.length === safeFixedDeposits.filter((f) => f.status === 'ACTIVE').length && safeFixedDeposits.filter((f) => f.status === 'ACTIVE').length > 0}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedFdNos(safeFixedDeposits.filter((f) => f.status === 'ACTIVE').map((f) => f.fdNo));
-                              } else {
-                                setSelectedFdNos([]);
-                              }
-                            }}
-                          />
-                        </th>
-                        <th>FD NO</th>
-                        <th>DEPOSITOR</th>
-                        <th>PRINCIPAL</th>
-                        <th>RATE (% P.A.)</th>
-                        <th>DEPOSIT DATE</th>
-                        <th>MATURITY DATE</th>
-                        <th>STATUS</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {safeFixedDeposits
-                        .filter((f) => {
-                          const search = fdSearchText.toLowerCase();
-                          return (
-                            f.fdNo.toLowerCase().includes(search) ||
-                            f.depositorName.toLowerCase().includes(search) ||
-                            f.phone.includes(search)
-                          );
-                        })
-                        .map((f) => {
-                          const isSelected = selectedFdNos.includes(f.fdNo);
-                          const isChangeable = f.status === 'ACTIVE';
-                          return (
-                            <tr key={f.id} style={{ opacity: isChangeable ? 1 : 0.6 }}>
-                              <td>
-                                <input
-                                  type="checkbox"
-                                  disabled={!isChangeable}
-                                  checked={isSelected}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setSelectedFdNos((prev) => [...prev, f.fdNo]);
-                                    } else {
-                                      setSelectedFdNos((prev) => prev.filter((no) => no !== f.fdNo));
-                                    }
-                                  }}
-                                />
-                              </td>
-                              <td style={{ fontWeight: 700, color: 'var(--color-primary-dark)' }}>{f.fdNo}</td>
-                              <td style={{ fontWeight: 600 }}>{f.depositorName}</td>
-                              <td style={{ fontWeight: 700 }}>₹{f.principal.toLocaleString('en-IN')}</td>
-                              <td>{f.interestRatePA}%</td>
-                              <td>{f.depositDate}</td>
-                              <td>{f.maturityDate}</td>
-                              <td>
-                                <span className={`badge ${f.status === 'ACTIVE' ? 'badge-success' : 'badge-warning'}`}>
-                                  {f.status}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* TAB: DEVICES & ACTIVE SESSION MANAGEMENT                                  */}
-      {/* ========================================================================= */}
-      {activeTab === 'devices' && (() => {
-        const allSessions = sessions || [];
-        const activeSessions = allSessions.filter((s) => s.status === 'ACTIVE');
-        const inactiveSessions = allSessions.filter((s) => s.status !== 'ACTIVE');
-        const otherActiveSessions = activeSessions.filter((s) => s.sessionId !== currentSessionId);
-        const currentDeviceSession = allSessions.find((s) => s.sessionId === currentSessionId) || {
-          sessionId: currentSessionId,
-          userId: userRole === 'ADMIN' ? 'kkv_master_admin' : 'kkv_staff',
-          userRole: userRole || 'ADMIN',
-          userEmail: 'goldfinancekkv@gmail.com',
-          deviceType: 'DESKTOP',
-          deviceName: 'Windows PC (This Device)',
-          operatingSystem: 'Windows 11',
-          browser: 'Chrome',
-          ipAddress: '192.168.1.102',
-          location: 'Salem, Tamil Nadu, India',
-          createdAt: new Date().toISOString(),
-          lastActiveAt: new Date().toISOString(),
-          status: 'ACTIVE',
-          isCurrent: true
-        } as DeviceSession;
-
-        const filteredSessions = allSessions.filter((s) => {
-          const isCurr = s.sessionId === currentSessionId;
-          if (deviceFilter === 'ACTIVE' && s.status !== 'ACTIVE') return false;
-          if (deviceFilter === 'INACTIVE' && s.status === 'ACTIVE') return false;
-          if (deviceFilter === 'CURRENT' && !isCurr) return false;
-          if (deviceFilter === 'MOBILE' && s.deviceType !== 'MOBILE' && s.deviceType !== 'TABLET') return false;
-          if (deviceFilter === 'DESKTOP' && s.deviceType !== 'DESKTOP' && s.deviceType !== 'LAPTOP') return false;
-
-          if (deviceSearch.trim()) {
-            const q = deviceSearch.trim().toLowerCase();
-            const matchName = s.deviceName?.toLowerCase().includes(q);
-            const matchBrowser = s.browser?.toLowerCase().includes(q);
-            const matchOS = s.operatingSystem?.toLowerCase().includes(q);
-            const matchIp = s.ipAddress?.toLowerCase().includes(q);
-            const matchId = s.sessionId?.toLowerCase().includes(q);
-            if (!matchName && !matchBrowser && !matchOS && !matchIp && !matchId) return false;
-          }
-          return true;
+      {/* Loan Management Tab Content (Admin Only) */}
+      {activeTab === 'loans' && (() => {
+        const query = adminLoanSearch.toLowerCase().trim();
+        const filteredLoans = loans.filter((l) => {
+          if (adminLoanStatus !== 'ALL' && l.status !== adminLoanStatus) return false;
+          if (!query) return true;
+          const matchLoanNo = (l.loanNo || '').toLowerCase().includes(query);
+          const matchCustName = (l.customerName || '').toLowerCase().includes(query);
+          const matchCustPhone = (l.customerPhone || '').includes(query);
+          const matchCustId = (l.customerId || '').toLowerCase().includes(query);
+          return matchLoanNo || matchCustName || matchCustPhone || matchCustId;
         });
 
-        const getDeviceIcon = (type?: string) => {
-          switch (type) {
-            case 'MOBILE':
-              return <Smartphone size={22} />;
-            case 'TABLET':
-              return <Tablet size={22} />;
-            case 'LAPTOP':
-              return <Laptop size={22} />;
-            default:
-              return <Monitor size={22} />;
-          }
-        };
+        const activeLoansCount = loans.filter((l) => l.status === 'ACTIVE').length;
+        const closedLoansCount = loans.filter((l) => l.status === 'CLOSED').length;
+        const overdueLoansCount = loans.filter((l) => l.status === 'OVERDUE').length;
+        const totalPrincipal = loans.reduce((acc, l) => acc + (l.principal || 0), 0);
+        const totalOutstanding = loans.reduce(
+          (acc, l) => acc + (l.status === 'CLOSED' ? 0 : (l.outstandingPrincipal ?? l.principal ?? 0)),
+          0
+        );
 
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
-            {/* Header Card */}
-            <div className="card" style={{ padding: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div style={{ width: '46px', height: '46px', borderRadius: '12px', backgroundColor: 'rgba(23, 107, 82, 0.12)', color: '#176B52', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Shield size={24} />
-                  </div>
-                  <div>
-                    <h2 style={{ fontSize: '20px', fontWeight: 800, margin: 0, color: 'var(--text-dark)' }}>
-                      DEVICE &amp; ACTIVE SESSION MANAGEMENT
-                    </h2>
-                    <p style={{ margin: '3px 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
-                      View and manage devices currently signed in to KKV Gold Finance.
-                    </p>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ fontSize: '12px', backgroundColor: 'rgba(23, 107, 82, 0.08)', color: 'var(--color-primary-dark)', padding: '6px 14px', borderRadius: 'var(--radius-full)', fontWeight: 700, border: '1px solid rgba(23, 107, 82, 0.2)' }}>
-                    Signed in as Master Admin (goldfinancekkv@gmail.com)
-                  </span>
-
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    style={{ fontSize: '12px', height: '36px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                    onClick={() => {
-                      fetchSessions();
-                      showToast('Refreshed active device sessions.', 'info');
-                    }}
-                  >
-                    <RefreshCw size={14} />
-                    <span>Refresh</span>
-                  </button>
-                </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: 800, margin: 0, color: '#1F2D26' }}>
+                  Loan Management &amp; Administrative Actions
+                </h2>
+                <p style={{ fontSize: '13px', margin: '3px 0 0', color: '#66756D' }}>
+                  Administer, inspect, edit, or delete existing issued loans with automated financial audit logging.
+                </p>
               </div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setCurrentPage('loan-issue')}
+                style={{ fontSize: '13px', fontWeight: 700, padding: '8px 16px', gap: '6px' }}
+              >
+                <Plus size={15} />
+                <span>+ Issue New Loan</span>
+              </button>
             </div>
 
             {/* Metric Summary Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px' }}>
-              <div className="stat-card">
-                <div className="stat-card-info">
-                  <span className="stat-card-label">ACTIVE DEVICES</span>
-                  <span className="stat-card-value" style={{ color: '#059669' }}>{activeSessions.length}</span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Live authenticated sessions</span>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+              <div className="stat-card" style={{ padding: '16px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)' }}>TOTAL LOANS</span>
+                <div style={{ fontSize: '20px', fontWeight: 800, color: '#176B52', marginTop: '6px' }}>
+                  {loans.length}
                 </div>
-                <div className="stat-card-icon" style={{ backgroundColor: 'rgba(16, 185, 129, 0.14)', color: '#059669' }}><Activity size={20} /></div>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Total portfolio contracts</span>
               </div>
-
-              <div className="stat-card">
-                <div className="stat-card-info">
-                  <span className="stat-card-label">CURRENT DEVICE</span>
-                  <span className="stat-card-value">1</span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>This browser window</span>
+              <div className="stat-card" style={{ padding: '16px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#166534' }}>ACTIVE LOANS</span>
+                <div style={{ fontSize: '20px', fontWeight: 800, color: '#166534', marginTop: '6px' }}>
+                  {activeLoansCount}
                 </div>
-                <div className="stat-card-icon" style={{ backgroundColor: 'rgba(201, 162, 39, 0.15)', color: '#B48909' }}><Monitor size={20} /></div>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Currently running</span>
               </div>
-
-              <div className="stat-card">
-                <div className="stat-card-info">
-                  <span className="stat-card-label">OTHER ACTIVE DEVICES</span>
-                  <span className="stat-card-value">{otherActiveSessions.length}</span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Remote active sessions</span>
+              <div className="stat-card" style={{ padding: '16px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#b45309' }}>OVERDUE LOANS</span>
+                <div style={{ fontSize: '20px', fontWeight: 800, color: '#b45309', marginTop: '6px' }}>
+                  {overdueLoansCount}
                 </div>
-                <div className="stat-card-icon" style={{ backgroundColor: 'rgba(13, 148, 136, 0.12)', color: '#0D9488' }}><Smartphone size={20} /></div>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Payment delayed</span>
               </div>
-
-              <div className="stat-card">
-                <div className="stat-card-info">
-                  <span className="stat-card-label">TOTAL RECORDED SESSIONS</span>
-                  <span className="stat-card-value">{allSessions.length}</span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Active &amp; recent history</span>
+              <div className="stat-card" style={{ padding: '16px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#1e40af' }}>CLOSED LOANS</span>
+                <div style={{ fontSize: '20px', fontWeight: 800, color: '#1e40af', marginTop: '6px' }}>
+                  {closedLoansCount}
                 </div>
-                <div className="stat-card-icon" style={{ backgroundColor: 'rgba(23, 107, 82, 0.12)', color: '#176B52' }}><Database size={20} /></div>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Fully settled</span>
+              </div>
+              <div className="stat-card" style={{ padding: '16px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--color-primary-dark)' }}>TOTAL PRINCIPAL</span>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--color-primary-dark)', marginTop: '6px' }}>
+                  ₹{totalPrincipal.toLocaleString('en-IN')}
+                </div>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Disbursed capital</span>
+              </div>
+              <div className="stat-card" style={{ padding: '16px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#ef4444' }}>TOTAL OUTSTANDING</span>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: '#ef4444', marginTop: '6px' }}>
+                  ₹{totalOutstanding.toLocaleString('en-IN')}
+                </div>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Unrecovered balance</span>
               </div>
             </div>
 
-            {/* CURRENT DEVICE HIGHLIGHT CARD */}
-            <div className="card" style={{ padding: '24px', border: '2px solid var(--color-primary-accent, #B48909)', backgroundColor: 'var(--bg-card)', borderRadius: '12px', boxShadow: '0 4px 18px rgba(180, 137, 9, 0.08)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px', borderBottom: '1px solid var(--border-light)', paddingBottom: '14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span className="badge badge-gold" style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.5px' }}>
-                    ★ CURRENT DEVICE (THIS BROWSER)
-                  </span>
-                  <span className="badge badge-success" style={{ fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#059669', display: 'inline-block' }} />
-                    ACTIVE NOW
-                  </span>
+            {/* Filter and Search Bar */}
+            <div className="card" style={{ padding: '16px 20px', border: '1px solid #DDE5DF', borderRadius: '12px' }}>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: '1 1 240px' }}>
+                  <input
+                    type="text"
+                    className="input-control"
+                    placeholder="Search by loan no, borrower name, mobile or customer ID..."
+                    value={adminLoanSearch}
+                    onChange={(e) => setAdminLoanSearch(e.target.value)}
+                    style={{ paddingLeft: '36px', height: '38px', fontSize: '13px' }}
+                  />
+                  <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ flex: '0 1 160px' }}>
+                  <select
+                    className="select-control"
+                    value={adminLoanStatus}
+                    onChange={(e) => setAdminLoanStatus(e.target.value as any)}
+                    style={{ height: '38px', fontSize: '12.5px' }}
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="ACTIVE">Active</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="OVERDUE">Overdue</option>
+                    <option value="CLOSED">Closed</option>
+                  </select>
+                </div>
+
+                {adminLoanSearch && (
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
-                    style={{ fontSize: '12px', height: '32px', gap: '5px' }}
-                    onClick={() => setSelectedSessionForDetails(currentDeviceSession)}
+                    onClick={() => setAdminLoanSearch('')}
+                    style={{ height: '38px', fontSize: '12px', gap: '4px' }}
                   >
-                    <Info size={13} />
-                    <span>Technical Details</span>
+                    <RotateCcw size={13} />
+                    <span>Clear Search</span>
                   </button>
-
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    style={{ fontSize: '12px', height: '32px', gap: '5px', color: '#dc2626', borderColor: '#fca5a5' }}
-                    onClick={() => setSessionToRevoke(currentDeviceSession)}
-                  >
-                    <LogOut size={13} />
-                    <span>Sign Out Current Device</span>
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '18px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div style={{ width: '44px', height: '44px', borderRadius: '10px', backgroundColor: 'rgba(201, 162, 39, 0.15)', color: '#B48909', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    {getDeviceIcon(currentDeviceSession.deviceType)}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>DEVICE &amp; OS</div>
-                    <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-dark)' }}>{currentDeviceSession.deviceName}</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{currentDeviceSession.operatingSystem}</div>
-                  </div>
-                </div>
-
-                <div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>BROWSER</div>
-                  <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--color-primary-dark)' }}>{currentDeviceSession.browser}</div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>v{currentDeviceSession.browserVersion || 'Latest'}</div>
-                </div>
-
-                <div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>IP &amp; LOCATION</div>
-                  <div style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--text-dark)' }}>{maskIpAddress(currentDeviceSession.ipAddress)}</div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{currentDeviceSession.location || 'Salem, Tamil Nadu'}</div>
-                </div>
-
-                <div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>ACTIVITY STATUS</div>
-                  <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#059669' }}>Last Active: Just now</div>
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Logged in: {new Date(currentDeviceSession.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                </div>
+                )}
               </div>
             </div>
 
-            {/* Filter, Search & Global Action Bar */}
-            <div className="card" style={{ padding: '18px 24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                  {[
-                    { key: 'ALL', label: `All (${allSessions.length})` },
-                    { key: 'ACTIVE', label: `Active (${activeSessions.length})` },
-                    { key: 'INACTIVE', label: `Inactive (${inactiveSessions.length})` },
-                    { key: 'CURRENT', label: 'Current Device' },
-                    { key: 'DESKTOP', label: 'Desktop / Laptop' },
-                    { key: 'MOBILE', label: 'Mobile / Tablet' }
-                  ].map((f) => (
-                    <button
-                      key={f.key}
-                      type="button"
-                      className={`btn btn-sm ${deviceFilter === f.key ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ fontSize: '12px', borderRadius: 'var(--radius-full)', padding: '5px 14px' }}
-                      onClick={() => setDeviceFilter(f.key as any)}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
+            {/* Loan Table */}
+            <div className="card" style={{ padding: '0', borderRadius: '12px', overflow: 'hidden', border: '1px solid #DDE5DF' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="table" style={{ margin: 0, width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#F8FAF9', borderBottom: '1.5px solid #D8E0DA' }}>
+                      <th style={{ padding: '12px 16px', fontSize: '11px', fontWeight: 800, color: '#4B5E54' }}>LOAN NO</th>
+                      <th style={{ padding: '12px 16px', fontSize: '11px', fontWeight: 800, color: '#4B5E54' }}>CUSTOMER</th>
+                      <th style={{ padding: '12px 16px', fontSize: '11px', fontWeight: 800, color: '#4B5E54' }}>PRINCIPAL</th>
+                      <th style={{ padding: '12px 16px', fontSize: '11px', fontWeight: 800, color: '#4B5E54' }}>INTEREST</th>
+                      <th style={{ padding: '12px 16px', fontSize: '11px', fontWeight: 800, color: '#4B5E54' }}>ISSUE DATE</th>
+                      <th style={{ padding: '12px 16px', fontSize: '11px', fontWeight: 800, color: '#4B5E54' }}>REPAYMENTS</th>
+                      <th style={{ padding: '12px 16px', fontSize: '11px', fontWeight: 800, color: '#4B5E54' }}>OUTSTANDING</th>
+                      <th style={{ padding: '12px 16px', fontSize: '11px', fontWeight: 800, color: '#4B5E54' }}>STATUS</th>
+                      <th style={{ padding: '12px 16px', fontSize: '11px', fontWeight: 800, color: '#4B5E54', textAlign: 'center', width: '220px' }}>ADMIN ACTIONS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredLoans.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} style={{ textAlign: 'center', padding: '40px', color: '#66756D', fontSize: '13px' }}>
+                          No loans found matching the search criteria.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredLoans.map((l) => {
+                        const linkedCust = customers.find(
+                          (c) => c.id === l.customerId || (c.customerId && c.customerId.toString() === l.customerId)
+                        );
+                        const custName = linkedCust?.name || l.customerName || 'Customer';
+                        const custId = linkedCust?.id || l.customerId || '—';
+                        const outstanding = l.status === 'CLOSED' ? 0 : (l.outstandingPrincipal ?? l.principal ?? 0);
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
-                  <div style={{ position: 'relative', minWidth: '240px' }}>
-                    <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                    <input
-                      type="text"
-                      className="input-control"
-                      placeholder="Search device, browser, OS, IP..."
-                      style={{ paddingLeft: '32px', height: '36px', fontSize: '12.5px', width: '100%' }}
-                      value={deviceSearch}
-                      onChange={(e) => setDeviceSearch(e.target.value)}
-                    />
-                  </div>
+                        // Calculate total repayments
+                        const loanReceipts = receipts.filter(
+                          (r) => (r.loanId === l.id || r.loanNo === l.loanNo) &&
+                            (r.kind || '').toUpperCase() !== 'LOAN DISBURSEMENT' &&
+                            (r.kind || '').toUpperCase() !== 'NEW LOAN'
+                        );
+                        const totalRepayments = loanReceipts.reduce((sum, r) => sum + (r.amount || 0), 0);
 
-                  {otherActiveSessions.length > 0 && (
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      style={{ height: '36px', fontSize: '12px', fontWeight: 700, color: '#dc2626', borderColor: '#fca5a5', display: 'flex', alignItems: 'center', gap: '6px' }}
-                      onClick={() => setShowRevokeAllOthersModal(true)}
-                    >
-                      <LogOut size={14} />
-                      <span>Sign Out All Other Devices ({otherActiveSessions.length})</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Other Devices / Sessions List */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0, color: 'var(--text-dark)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  AUTHENTICATED SESSIONS ({filteredSessions.length})
-                </h3>
-              </div>
-
-              {filteredSessions.length === 0 ? (
-                <div className="card" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  <Monitor size={36} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
-                  <div style={{ fontWeight: 700, fontSize: '15px' }}>NO SESSIONS FOUND</div>
-                  <div style={{ fontSize: '12.5px', marginTop: '4px' }}>No device sessions match the selected filter or search query.</div>
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
-                  {filteredSessions.map((s) => {
-                    const isCurr = s.sessionId === currentSessionId;
-                    const isActive = s.status === 'ACTIVE';
-                    const isRevoked = s.status === 'REVOKED';
-
-                    return (
-                      <div
-                        key={s.sessionId}
-                        className="card"
-                        style={{
-                          padding: '20px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          justifyContent: 'space-between',
-                          gap: '16px',
-                          border: isCurr ? '2px solid var(--color-primary-accent, #B48909)' : '1px solid var(--border-color)',
-                          backgroundColor: isRevoked ? 'rgba(241, 245, 249, 0.6)' : '#ffffff',
-                          position: 'relative'
-                        }}
-                      >
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <div
-                                style={{
-                                  width: '38px',
-                                  height: '38px',
-                                  borderRadius: '8px',
-                                  backgroundColor: isActive ? 'rgba(16, 185, 129, 0.12)' : 'rgba(100, 116, 139, 0.12)',
-                                  color: isActive ? '#059669' : '#64748b',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  flexShrink: 0
-                                }}
+                        return (
+                          <tr key={`admin-loan-${l.id}`} style={{ borderBottom: '1px solid #EDF2EE' }}>
+                            <td style={{ padding: '12px 16px', fontWeight: 800, color: '#176B52', fontFamily: 'monospace' }}>
+                              {l.loanNo || l.id}
+                            </td>
+                            <td style={{ padding: '12px 16px' }}>
+                              <div style={{ fontWeight: 700, color: '#1F2D26' }}>{custName}</div>
+                              <div style={{ fontSize: '11px', color: '#66756D' }}>ID: {custId}</div>
+                            </td>
+                            <td style={{ padding: '12px 16px', fontWeight: 700 }}>
+                              ₹{(l.principal || 0).toLocaleString('en-IN')}
+                            </td>
+                            <td style={{ padding: '12px 16px', color: '#176B52', fontWeight: 600 }}>
+                              {l.interestRate || 1.5}%/mo
+                            </td>
+                            <td style={{ padding: '12px 16px', fontSize: '12.5px', color: '#4B5E54' }}>
+                              {l.date}
+                            </td>
+                            <td style={{ padding: '12px 16px' }}>
+                              <div style={{ fontSize: '12.5px', fontWeight: 700, color: totalRepayments > 0 ? '#10b981' : '#64748b' }}>
+                                ₹{totalRepayments.toLocaleString('en-IN')}
+                              </div>
+                              <span style={{ fontSize: '10.5px', color: '#94a3b8' }}>
+                                {loanReceipts.length} receipt(s)
+                              </span>
+                            </td>
+                            <td style={{ padding: '12px 16px', fontWeight: 800, color: outstanding > 0 ? '#ef4444' : '#10b981' }}>
+                              ₹{outstanding.toLocaleString('en-IN')}
+                            </td>
+                            <td style={{ padding: '12px 16px' }}>
+                              <span
+                                className={`badge ${
+                                  l.status === 'ACTIVE'
+                                    ? 'badge-success'
+                                    : l.status === 'CLOSED'
+                                    ? 'badge-info'
+                                    : 'badge-warning'
+                                }`}
+                                style={{ fontSize: '11px' }}
                               >
-                                {getDeviceIcon(s.deviceType)}
+                                {l.status}
+                              </span>
+                            </td>
+                            <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ height: '30px', padding: '0 8px', fontSize: '11px', gap: '4px', fontWeight: 700 }}
+                                  title="View in Loan Display"
+                                  onClick={() => {
+                                    setSelectedLoan(l);
+                                    setCurrentPage('loan-display');
+                                  }}
+                                >
+                                  <Eye size={12} />
+                                  <span>View</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ height: '30px', padding: '0 8px', fontSize: '11px', gap: '4px', fontWeight: 700 }}
+                                  title="Admin Edit Loan"
+                                  onClick={() => setEditingLoan(l)}
+                                >
+                                  <Edit3 size={12} />
+                                  <span>Edit</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm"
+                                  style={{
+                                    height: '30px',
+                                    padding: '0 8px',
+                                    fontSize: '11px',
+                                    gap: '4px',
+                                    fontWeight: 700,
+                                    color: 'var(--color-danger, #ef4444)'
+                                  }}
+                                  title="Admin Delete Loan"
+                                  onClick={() => setDeletingLoan(l)}
+                                >
+                                  <Trash2 size={12} />
+                                  <span>Delete</span>
+                                </button>
                               </div>
-                              <div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--text-dark)' }}>
-                                    {s.deviceName}
-                                  </h4>
-                                  {isCurr && (
-                                    <span className="badge badge-gold" style={{ fontSize: '9px', fontWeight: 800 }}>
-                                      CURRENT
-                                    </span>
-                                  )}
-                                </div>
-                                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                                  {s.browser} • {s.operatingSystem}
-                                </div>
-                              </div>
-                            </div>
-
-                            <div>
-                              {isActive ? (
-                                <span className="badge badge-success" style={{ fontSize: '10px', fontWeight: 800 }}>
-                                  ● ACTIVE
-                                </span>
-                              ) : isRevoked ? (
-                                <span className="badge badge-danger" style={{ fontSize: '10px' }}>
-                                  SIGNED OUT
-                                </span>
-                              ) : (
-                                <span className="badge badge-secondary" style={{ fontSize: '10px' }}>
-                                  ○ INACTIVE
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '12px', padding: '12px', backgroundColor: 'var(--bg-card-muted, #f8fafc)', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
-                            <div>
-                              <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10.5px' }}>LOCATION</span>
-                              <strong style={{ color: 'var(--text-dark)' }}>{s.location || 'Salem, Tamil Nadu'}</strong>
-                            </div>
-                            <div>
-                              <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10.5px' }}>IP ADDRESS</span>
-                              <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{maskIpAddress(s.ipAddress)}</span>
-                            </div>
-                            <div>
-                              <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10.5px' }}>LOGGED IN</span>
-                              <span>{new Date(s.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} {new Date(s.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                            </div>
-                            <div>
-                              <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10.5px' }}>LAST ACTIVE</span>
-                              <strong style={{ color: isActive ? '#059669' : 'var(--text-muted)' }}>{formatRelativeTime(s.lastActiveAt)}</strong>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '8px', borderTop: '1px solid var(--border-light)' }}>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            style={{ fontSize: '11.5px', height: '30px' }}
-                            onClick={() => setSelectedSessionForDetails(s)}
-                          >
-                            Details
-                          </button>
-
-                          {!isRevoked ? (
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
-                              style={{ fontSize: '11.5px', height: '30px', color: '#dc2626', borderColor: '#fca5a5' }}
-                              onClick={() => setSessionToRevoke(s)}
-                            >
-                              <LogOut size={12} style={{ marginRight: '4px' }} />
-                              <span>{isCurr ? 'Sign Out Self' : 'Sign Out'}</span>
-                            </button>
-                          ) : (
-                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                              Session Ended
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-
-            {/* MODAL 1: SIGN OUT CONFIRMATION (SINGLE SESSION) */}
-            {sessionToRevoke && (
-              <div className="modal-overlay" style={{ zIndex: 1100 }}>
-                <div className="modal-content" style={{ maxWidth: '480px', padding: '28px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                    <div style={{ width: '44px', height: '44px', borderRadius: '50%', backgroundColor: 'rgba(220, 38, 38, 0.12)', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <LogOut size={22} />
-                    </div>
-                    <div>
-                      <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--text-dark)' }}>
-                        {sessionToRevoke.sessionId === currentSessionId ? 'SIGN OUT CURRENT DEVICE?' : 'SIGN OUT DEVICE?'}
-                      </h3>
-                      <p style={{ margin: '2px 0 0', fontSize: '12.5px', color: 'var(--text-muted)' }}>
-                        Session Revocation Confirmation
-                      </p>
-                    </div>
-                  </div>
-
-                  <div style={{ backgroundColor: 'var(--bg-card-muted, #f8fafc)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '16px', fontSize: '13px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Device:</span>
-                      <strong>{sessionToRevoke.deviceName} ({sessionToRevoke.operatingSystem})</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Browser:</span>
-                      <strong>{sessionToRevoke.browser}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>IP / Location:</span>
-                      <span>{maskIpAddress(sessionToRevoke.ipAddress)} • {sessionToRevoke.location}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Last Active:</span>
-                      <strong style={{ color: '#059669' }}>{formatRelativeTime(sessionToRevoke.lastActiveAt)}</strong>
-                    </div>
-                  </div>
-
-                  <div style={{ padding: '12px', backgroundColor: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '8px', marginBottom: '22px' }}>
-                    <div style={{ fontSize: '12px', color: '#b91c1c', lineHeight: 1.45 }}>
-                      {sessionToRevoke.sessionId === currentSessionId ? (
-                        <span><strong>Warning:</strong> You are about to sign out your current session. You will be immediately returned to the workspace login screen.</span>
-                      ) : (
-                        <span><strong>Notice:</strong> This action will immediately terminate access for <strong>{sessionToRevoke.deviceName}</strong>. Any ongoing operations on that device will be safely halted.</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      disabled={isRevoking}
-                      onClick={() => setSessionToRevoke(null)}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      className="btn"
-                      disabled={isRevoking}
-                      style={{ backgroundColor: '#dc2626', color: '#ffffff', fontWeight: 800, padding: '8px 22px', border: 'none', borderRadius: '8px' }}
-                      onClick={async () => {
-                        setIsRevoking(true);
-                        try {
-                          await revokeSessionById(sessionToRevoke.sessionId);
-                          setSessionToRevoke(null);
-                        } finally {
-                          setIsRevoking(false);
-                        }
-                      }}
-                    >
-                      {isRevoking ? 'Signing Out...' : 'Sign Out Device'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* MODAL 2: SIGN OUT ALL OTHER DEVICES */}
-            {showRevokeAllOthersModal && (
-              <div className="modal-overlay" style={{ zIndex: 1100 }}>
-                <div className="modal-content" style={{ maxWidth: '480px', padding: '28px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                    <div style={{ width: '44px', height: '44px', borderRadius: '50%', backgroundColor: 'rgba(220, 38, 38, 0.12)', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <AlertTriangle size={22} />
-                    </div>
-                    <div>
-                      <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--text-dark)' }}>
-                        SIGN OUT ALL OTHER DEVICES?
-                      </h3>
-                      <p style={{ margin: '2px 0 0', fontSize: '12.5px', color: 'var(--text-muted)' }}>
-                        Batch Session Termination
-                      </p>
-                    </div>
-                  </div>
-
-                  <div style={{ padding: '14px', backgroundColor: 'var(--bg-card-muted, #f8fafc)', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '16px', fontSize: '13px', lineHeight: 1.5 }}>
-                    This action will immediately sign out <strong>{otherActiveSessions.length} remote active device(s)</strong>.
-                    <br />
-                    Your <strong>current device</strong> session will remain safely authenticated and active.
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      disabled={isRevoking}
-                      onClick={() => setShowRevokeAllOthersModal(false)}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      className="btn"
-                      disabled={isRevoking}
-                      style={{ backgroundColor: '#dc2626', color: '#ffffff', fontWeight: 800, padding: '8px 22px', border: 'none', borderRadius: '8px' }}
-                      onClick={async () => {
-                        setIsRevoking(true);
-                        try {
-                          await revokeOtherSessionsExceptCurrent();
-                          setShowRevokeAllOthersModal(false);
-                        } finally {
-                          setIsRevoking(false);
-                        }
-                      }}
-                    >
-                      {isRevoking ? 'Signing Out...' : 'Sign Out All Others'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* MODAL 3: TECHNICAL SESSION DETAILS */}
-            {selectedSessionForDetails && (
-              <div className="modal-overlay" style={{ zIndex: 1100 }}>
-                <div className="modal-content" style={{ maxWidth: '540px', padding: '28px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ width: '40px', height: '40px', borderRadius: '8px', backgroundColor: 'rgba(23, 107, 82, 0.12)', color: '#176B52', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Info size={20} />
-                      </div>
-                      <div>
-                        <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: 'var(--text-dark)' }}>
-                          SESSION TECHNICAL METADATA
-                        </h3>
-                        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                          {selectedSessionForDetails.deviceName}
-                        </span>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
-                      onClick={() => setSelectedSessionForDetails(null)}
-                    >
-                      <X size={18} />
-                    </button>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12.5px', marginBottom: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: 'var(--bg-card-muted, #f8fafc)', borderRadius: '6px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Session Identifier:</span>
-                      <strong style={{ fontFamily: 'monospace' }}>{selectedSessionForDetails.sessionId}</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: 'var(--bg-card-muted, #f8fafc)', borderRadius: '6px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>User Account:</span>
-                      <strong>{selectedSessionForDetails.userEmail || 'goldfinancekkv@gmail.com'} ({selectedSessionForDetails.userRole})</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: 'var(--bg-card-muted, #f8fafc)', borderRadius: '6px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Device / Platform:</span>
-                      <strong>{selectedSessionForDetails.deviceName} ({selectedSessionForDetails.deviceType})</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: 'var(--bg-card-muted, #f8fafc)', borderRadius: '6px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Operating System:</span>
-                      <strong>{selectedSessionForDetails.operatingSystem}</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: 'var(--bg-card-muted, #f8fafc)', borderRadius: '6px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Browser Engine:</span>
-                      <strong>{selectedSessionForDetails.browser} ({selectedSessionForDetails.browserVersion || 'Latest'})</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: 'var(--bg-card-muted, #f8fafc)', borderRadius: '6px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>IP Address:</span>
-                      <strong style={{ fontFamily: 'monospace' }}>{maskIpAddress(selectedSessionForDetails.ipAddress)}</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: 'var(--bg-card-muted, #f8fafc)', borderRadius: '6px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Location:</span>
-                      <strong>{selectedSessionForDetails.location || 'Salem, Tamil Nadu, India'}</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: 'var(--bg-card-muted, #f8fafc)', borderRadius: '6px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Screen Resolution:</span>
-                      <span>{selectedSessionForDetails.screenResolution || '1920 × 1080'}</span>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: 'var(--bg-card-muted, #f8fafc)', borderRadius: '6px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Timezone:</span>
-                      <span>{selectedSessionForDetails.timezone || 'Asia/Kolkata'}</span>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: 'var(--bg-card-muted, #f8fafc)', borderRadius: '6px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Login Timestamp:</span>
-                      <span>{new Date(selectedSessionForDetails.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'medium' })}</span>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: 'var(--bg-card-muted, #f8fafc)', borderRadius: '6px' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Last Activity:</span>
-                      <strong>{new Date(selectedSessionForDetails.lastActiveAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'medium' })} ({formatRelativeTime(selectedSessionForDetails.lastActiveAt)})</strong>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      onClick={() => setSelectedSessionForDetails(null)}
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         );
       })()}
@@ -3075,19 +2545,6 @@ export const AdminPanel: React.FC = () => {
 
                           <div className="card" style={{ padding: '14px', backgroundColor: 'var(--bg-surface-secondary)', border: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: 0 }}>
                             <div>
-                              <strong style={{ fontSize: '13px', display: 'block', color: 'var(--text-primary)' }}>Bulk FD Date Shifting</strong>
-                              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Enable multi-FD calendar edit features</span>
-                            </div>
-                            <input
-                              type="checkbox"
-                              style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-dark)', cursor: 'pointer' }}
-                              checked={bulkFdDateChangeEnabled}
-                              onChange={(e) => setBulkFdDateChangeEnabled(e.target.checked)}
-                            />
-                          </div>
-
-                          <div className="card" style={{ padding: '14px', backgroundColor: 'var(--bg-surface-secondary)', border: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: 0 }}>
-                            <div>
                               <strong style={{ fontSize: '13px', display: 'block', color: 'var(--text-primary)' }}>Cabinet Lockers</strong>
                               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Track safe deposits cabinets A &amp; B</span>
                             </div>
@@ -3192,47 +2649,125 @@ export const AdminPanel: React.FC = () => {
                 )}
 
                 {masterSubTab === 'danger' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    {/* WIPE ALL DATA ACTION */}
-                    <div style={{ padding: '20px', backgroundColor: 'rgba(220, 38, 38, 0.06)', border: '1px solid rgba(220, 38, 38, 0.3)', borderRadius: 'var(--radius-md)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                        <Trash2 size={18} color="#DC2626" />
-                        <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#991B1B', margin: 0 }}>WIPE ALL DATA</h4>
-                      </div>
-                      <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.5 }}>
-                        Warning: Permanently resets all operational records (Customers, Loans, Receipts, Fixed Deposits, Rental, and Day Book). The system will automatically create a verified full backup ZIP and download it to your computer before any data is deleted.
-                      </p>
-                      <button
-                        type="button"
-                        className="btn"
-                        style={{ backgroundColor: '#DC2626', color: '#FFF', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-                        onClick={() => {
-                          setShowWipeModal(true);
-                        }}
-                      >
-                        <Trash2 size={16} />
-                        <span>Wipe All Data</span>
-                      </button>
-                    </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    {/* DATABASE BACKUP & RECOVERY SECTION */}
+                    <DatabaseBackupRecoverySection
+                      onOpenRestore={() => setShowRestoreModal(true)}
+                    />
 
-                    {/* RESTORE DATABASE ACTION */}
-                    <div style={{ padding: '20px', backgroundColor: 'rgba(37, 99, 235, 0.06)', border: '1px solid rgba(37, 99, 235, 0.3)', borderRadius: 'var(--radius-md)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                        <RotateCcw size={18} color="#1E3A8A" />
-                        <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#1E3A8A', margin: 0 }}>RESTORE BACKUP (FROM COMPUTER)</h4>
+                    {/* STRICTLY SEPARATED DANGER ZONE */}
+                    <div
+                      style={{
+                        padding: '24px',
+                        backgroundColor: 'rgba(220, 38, 38, 0.04)',
+                        border: '2px solid rgba(220, 38, 38, 0.35)',
+                        borderRadius: '16px',
+                        boxShadow: '0 4px 16px rgba(220, 38, 38, 0.08)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                        <AlertTriangle size={22} color="#DC2626" />
+                        <h4 style={{ fontSize: '17px', fontWeight: 800, color: '#991B1B', margin: 0, letterSpacing: '0.2px' }}>
+                          DANGER ZONE (DESTRUCTIVE OPERATIONS)
+                        </h4>
                       </div>
-                      <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '0 0 14px', lineHeight: 1.5 }}>
-                        Restore the complete application database from a previously downloaded <code>.zip</code> (or <code>.json</code>) backup archive saved on your computer.
+                      <p style={{ fontSize: '13px', color: '#64748B', marginBottom: '20px', lineHeight: 1.5 }}>
+                        The actions below alter or reset local database state and operational datasets. Exercise extreme caution.
                       </p>
-                      <button
-                        type="button"
-                        className="btn"
-                        style={{ backgroundColor: '#2563EB', color: '#FFF', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
-                        onClick={() => setShowRestoreModal(true)}
-                      >
-                        <Upload size={16} />
-                        <span>Restore Backup From ZIP</span>
-                      </button>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+                        {/* WIPE ALL DATA CARD */}
+                        <div
+                          style={{
+                            backgroundColor: '#FFFFFF',
+                            border: '1px solid #FECACA',
+                            borderRadius: '12px',
+                            padding: '16px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                            gap: '12px'
+                          }}
+                        >
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                              <Trash2 size={16} color="#DC2626" />
+                              <strong style={{ fontSize: '14px', color: '#991B1B' }}>Wipe Operational Data</strong>
+                            </div>
+                            <p style={{ fontSize: '12px', color: '#475569', margin: 0, lineHeight: 1.4 }}>
+                              Permanently resets Customers, Loans, Payments, FDs, and Rental records. An automated safety backup ZIP is created and downloaded before deletion.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn"
+                            style={{
+                              backgroundColor: '#DC2626',
+                              color: '#FFFFFF',
+                              fontWeight: 800,
+                              fontSize: '13px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '8px',
+                              padding: '8px 16px',
+                              borderRadius: '8px',
+                              border: 'none',
+                              width: 'fit-content'
+                            }}
+                            onClick={() => setShowWipeModal(true)}
+                          >
+                            <Trash2 size={15} />
+                            <span>Wipe All Data</span>
+                          </button>
+                        </div>
+
+                        {/* CLEAR SYNC CACHE CARD */}
+                        <div
+                          style={{
+                            backgroundColor: '#FFFFFF',
+                            border: '1px solid #E2E8F0',
+                            borderRadius: '12px',
+                            padding: '16px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                            gap: '12px'
+                          }}
+                        >
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                              <RefreshCw size={16} color="#475569" />
+                              <strong style={{ fontSize: '14px', color: '#1E293B' }}>Purge &amp; Re-sync Cache</strong>
+                            </div>
+                            <p style={{ fontSize: '12px', color: '#475569', margin: 0, lineHeight: 1.4 }}>
+                              Purges in-memory sync indices and re-synchronizes the authoritative dataset freshly from Cloud Firestore.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            disabled={isClearingSync}
+                            style={{
+                              fontWeight: 700,
+                              fontSize: '13px',
+                              cursor: isClearingSync ? 'not-allowed' : 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '8px',
+                              padding: '8px 16px',
+                              borderRadius: '8px',
+                              width: 'fit-content'
+                            }}
+                            onClick={handleClearSyncCache}
+                          >
+                            <RefreshCw size={14} className={isClearingSync ? 'animate-spin' : ''} />
+                            <span>{isClearingSync ? 'Re-syncing...' : 'Clear Sync Cache'}</span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -3263,8 +2798,8 @@ export const AdminPanel: React.FC = () => {
         onOpenRestore={() => setShowRestoreModal(true)}
       />
 
-      {/* Hidden Fail-Safe System Restore Modal */}
-      <SystemRestoreModal
+      {/* Database Restore Modal */}
+      <DatabaseRestoreModal
         isOpen={showRestoreModal}
         onClose={() => setShowRestoreModal(false)}
         onSuccessReload={() => {
@@ -3310,11 +2845,11 @@ export const AdminPanel: React.FC = () => {
             }}
           >
             <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: '0 0 6px 0', fontSize: '18px', fontWeight: 800, color: 'var(--color-danger, #ef4444)' }}>
-                Delete Customer?
+              <h3 style={{ margin: '0 0 6px 0', fontSize: '18px', fontWeight: 800, color: '#b45309' }}>
+                Move to Deleted Customers?
               </h3>
               <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)' }}>
-                You are about to permanently delete this customer record.
+                This customer will be soft-deleted and moved to the <strong>Deleted Customers</strong> tab. You can restore them anytime or permanently delete them from there.
               </p>
             </div>
 
@@ -3336,8 +2871,8 @@ export const AdminPanel: React.FC = () => {
               <div><strong>Mobile Number:</strong> +91 {deletingCustomer.phone}</div>
             </div>
 
-            <div style={{ backgroundColor: 'var(--badge-danger-bg)', border: '1px solid var(--badge-danger-border)', borderRadius: '8px', padding: '10px 14px', marginBottom: '20px', color: 'var(--color-danger)', fontSize: '12px', fontWeight: 700, textAlign: 'center' }}>
-              ⚠ This action cannot be undone.
+            <div style={{ backgroundColor: '#fef3c7', border: '1px solid #fde68a', borderRadius: '8px', padding: '10px 14px', marginBottom: '20px', color: '#92400e', fontSize: '12px', fontWeight: 600, textAlign: 'center' }}>
+              ℹ This customer can be restored later or permanently removed from Deleted Customers.
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
@@ -3345,14 +2880,14 @@ export const AdminPanel: React.FC = () => {
                 Cancel
               </button>
               <button
-                className="btn btn-danger"
-                style={{ backgroundColor: 'var(--color-danger, #ef4444)', color: '#fff', fontWeight: 700 }}
+                className="btn btn-warning"
+                style={{ backgroundColor: '#d97706', color: '#fff', fontWeight: 700 }}
                 onClick={() => {
                   deleteCustomer(deletingCustomer.id);
                   setDeletingCustomer(null);
                 }}
               >
-                🗑 Delete Customer
+                📁 Move to Deleted Customers
               </button>
             </div>
           </div>
@@ -3528,6 +3063,28 @@ export const AdminPanel: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Admin Edit & Delete Loan Modals */}
+      <EditLoanModal
+        isOpen={!!editingLoan}
+        loan={editingLoan}
+        onClose={() => setEditingLoan(null)}
+        onSuccess={() => setEditingLoan(null)}
+      />
+      <DeleteLoanModal
+        isOpen={!!deletingLoan}
+        loan={deletingLoan}
+        onClose={() => setDeletingLoan(null)}
+        onSuccess={() => setDeletingLoan(null)}
+      />
+
+      {/* Configuration Center & Backup Modal */}
+      {showConfigCenterModal && (
+        <ConfigurationCenterModal
+          isOpen={showConfigCenterModal}
+          onClose={() => setShowConfigCenterModal(false)}
+        />
       )}
     </div>
   );

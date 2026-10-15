@@ -1,6 +1,6 @@
 import Decimal from 'decimal.js';
 import { v4 as uuidv4 } from 'uuid';
-import { telegramRepository } from '../telegram/telegram.repository.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 import { Loan, Receipt, LoanTypeConfig } from '../types/index.js';
 import { customerService } from './customer.service.js';
 import { receiptService } from './receipt.service.js';
@@ -8,46 +8,17 @@ import { accountingService } from './accounting.service.js';
 import { adminService } from './admin.service.js';
 import { counterService } from './counter.service.js';
 import { FileAttachmentModel } from '../models/FileAttachment.js';
-
-const parseLoanDate = (dateStr?: string): Date => {
-  if (!dateStr) return new Date();
-  const clean = dateStr.trim();
-  const separator = clean.includes('-') ? '-' : clean.includes('/') ? '/' : null;
-  if (separator) {
-    const parts = clean.split(separator);
-    if (parts[0].length === 4) {
-      // YYYY-MM-DD
-      return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-    } else {
-      // DD-MM-YYYY
-      return new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
-    }
-  }
-  const parsed = new Date(clean);
-  return isNaN(parsed.getTime()) ? new Date() : parsed;
-};
-
-const formatLoanDate = (date: Date): string => {
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  return `${day}-${month}-${year}`;
-};
-
-const addMonthsToLoanDate = (baseDate: Date, monthsToAdd: number): Date => {
-  const origDay = baseDate.getDate();
-  const origMonth = baseDate.getMonth();
-  const origYear = baseDate.getFullYear();
-
-  const totalMonths = origMonth + monthsToAdd;
-  const targetYear = origYear + Math.floor(totalMonths / 12);
-  const targetMonth = ((totalMonths % 12) + 12) % 12;
-
-  const maxDaysInTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
-  const targetDay = Math.min(origDay, maxDaysInTargetMonth);
-
-  return new Date(targetYear, targetMonth, targetDay);
-};
+import { StaffAuditModel } from '../models/StaffAudit.js';
+import {
+  parseDateComponents,
+  parseLoanDate,
+  formatLoanDate,
+  formatInputDate,
+  addMonthsToLoanDate,
+  validateLoanIssueDate,
+  getCalendarDaysDifference,
+  getMinimumLoanIssueDate
+} from '../utils/dateUtils.js';
 
 const calculateAuthoritativeNextDueDate = (
   issueDateStr?: string,
@@ -66,24 +37,24 @@ export class LoanService {
   }
 
   public getAll(includeDeleted: boolean = false): Loan[] {
-    return telegramRepository.getRecords<Loan>('LOAN', { includeDeleted });
+    return firestoreRepository.getRecords<Loan>('LOAN', { includeDeleted });
   }
 
-  public async getByIdAsync(id: string): Promise<Loan | null> {
-    return this.getById(id);
+  public async getByIdAsync(id: string, includeDeleted: boolean = false): Promise<Loan | null> {
+    return this.getById(id, includeDeleted);
   }
 
-  public getById(id: string): Loan | null {
-    const loans = this.getAll(true);
-    return loans.find((l) => l.id === id || l.loanNo.toLowerCase() === id.toLowerCase()) || null;
+  public getById(id: string, includeDeleted: boolean = false): Loan | null {
+    const loans = this.getAll(includeDeleted);
+    return loans.find((l) => l.id === id || (l.loanNo && l.loanNo.toLowerCase() === id.toLowerCase())) || null;
   }
 
-  public async getByLoanNoAsync(loanNo: string): Promise<Loan | null> {
-    return this.getByIdAsync(loanNo);
+  public async getByLoanNoAsync(loanNo: string, includeDeleted: boolean = false): Promise<Loan | null> {
+    return this.getByIdAsync(loanNo, includeDeleted);
   }
 
-  public getByLoanNo(loanNo: string): Loan | null {
-    return this.getById(loanNo);
+  public getByLoanNo(loanNo: string, includeDeleted: boolean = false): Loan | null {
+    return this.getById(loanNo, includeDeleted);
   }
 
   public calculateFinancials(principal: number, interestRatePercent: number, items: any[], manualMarketValue?: number) {
@@ -275,8 +246,17 @@ export class LoanService {
       };
     }
 
-    const effectiveIssueDateStr = loanData.date || formatLoanDate(new Date());
-    const baseIssueDate = parseLoanDate(effectiveIssueDateStr);
+    // Validate Loan Issue Date strictly (allows up to 30 days backdate, forbids future dates)
+    const rawIssueDateStr = loanData.date ? String(loanData.date).trim() : formatLoanDate(new Date());
+    const dateValidation = validateLoanIssueDate(rawIssueDateStr);
+    if (!dateValidation.isValid) {
+      const err: any = new Error(dateValidation.error || 'Please enter a valid loan issue date.');
+      err.code = dateValidation.code || 'INVALID_ISSUE_DATE';
+      throw err;
+    }
+
+    const baseIssueDate = dateValidation.parsedDate!;
+    const effectiveIssueDateStr = dateValidation.formattedDate!;
     const effectiveAdvanceDays = loanData.advanceDays || (loanData.deductAdvanceInterest ? 30 : 0);
     const hasAdvance = Boolean(loanData.deductAdvanceInterest && effectiveAdvanceDays > 0);
     const monthsCovered = hasAdvance ? Math.max(1, Math.round(effectiveAdvanceDays / 30)) : 0;
@@ -363,8 +343,8 @@ export class LoanService {
       updatedAt: new Date().toISOString()
     };
 
-    // Persist to Telegram
-    await telegramRepository.createRecord('LOAN', newLoan.id, newLoan, actor);
+    // Persist to Cloud Firestore
+    await firestoreRepository.createRecord('LOAN', newLoan.id, newLoan, actor);
 
     // Update customer active loans count
     const customer = customerService.getById(newLoan.customerId);
@@ -474,7 +454,7 @@ export class LoanService {
     const loan = this.getById(loanNo);
     if (!loan) return null;
 
-    const updated = await telegramRepository.updateRecord<Loan>('LOAN', loan.id, {
+    const updated = await firestoreRepository.updateRecord<Loan>('LOAN', loan.id, {
       outstandingPrincipal: 0,
       status: 'CLOSED',
       updatedAt: new Date().toISOString()
@@ -487,7 +467,7 @@ export class LoanService {
     const loan = this.getById(loanNo);
     if (!loan) return null;
 
-    telegramRepository.updateRecord<Loan>('LOAN', loan.id, {
+    firestoreRepository.updateRecord<Loan>('LOAN', loan.id, {
       outstandingPrincipal: 0,
       status: 'CLOSED',
       updatedAt: new Date().toISOString()
@@ -500,7 +480,7 @@ export class LoanService {
     const loan = this.getById(id);
     if (!loan) return null;
 
-    const updated = await telegramRepository.updateRecord<Loan>('LOAN', loan.id, updates);
+    const updated = await firestoreRepository.updateRecord<Loan>('LOAN', loan.id, updates);
     return updated.data;
   }
 
@@ -508,15 +488,271 @@ export class LoanService {
     const loan = this.getById(id);
     if (!loan) return null;
 
-    telegramRepository.updateRecord<Loan>('LOAN', loan.id, updates).catch(() => {});
+    firestoreRepository.updateRecord<Loan>('LOAN', loan.id, updates).catch(() => {});
     return { ...loan, ...updates };
+  }
+
+  /**
+   * Admin-Only Loan Edit with financial recalculation, concurrency protection, and audit logging.
+   */
+  public async adminUpdateLoanAsync(
+    id: string,
+    payload: any,
+    actor?: { uid?: string; email?: string; role?: string; name?: string },
+    meta?: { ipAddress?: string; userAgent?: string }
+  ): Promise<Loan> {
+    const loan = this.getById(id);
+    if (!loan) {
+      const err: any = new Error(`Loan with ID "${id}" not found.`);
+      err.statusCode = 404;
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+
+    const reason = (payload.reason || payload.editReason || '').trim();
+    if (!reason) {
+      const err: any = new Error('An administrative edit reason is required for audit logging.');
+      err.statusCode = 400;
+      err.code = 'REASON_REQUIRED';
+      throw err;
+    }
+
+    // Retrieve receipts associated with this loan to detect repayments
+    const allReceipts = await receiptService.getAllAsync();
+    const loanReceipts = allReceipts.filter((r) => r.loanId === loan.id || r.loanNo === loan.loanNo);
+    const repaymentReceipts = loanReceipts.filter((r) => r.kind !== 'LOAN DISBURSEMENT' && r.kind !== 'NEW LOAN');
+    const totalPrincipalRepaid = repaymentReceipts.reduce((sum, r) => sum + (Number(r.principalComponent) || 0), 0);
+
+    // Track before and after changes for audit
+    const beforeChanges: Record<string, any> = {};
+    const afterChanges: Record<string, any> = {};
+
+    let effectivePrincipal = loan.principal;
+    let principalChanged = false;
+    if (payload.principal !== undefined) {
+      const newPrincipal = Number(payload.principal);
+      if (isNaN(newPrincipal) || newPrincipal <= 0) {
+        const err: any = new Error('Principal amount must be greater than zero.');
+        err.statusCode = 400;
+        err.code = 'INVALID_PRINCIPAL';
+        throw err;
+      }
+      if (newPrincipal < totalPrincipalRepaid) {
+        const err: any = new Error(
+          `Cannot set principal to ₹${newPrincipal.toLocaleString('en-IN')}. A total of ₹${totalPrincipalRepaid.toLocaleString('en-IN')} has already been repaid against this loan.`
+        );
+        err.statusCode = 400;
+        err.code = 'PRINCIPAL_BELOW_REPAID';
+        throw err;
+      }
+      if (newPrincipal !== loan.principal) {
+        beforeChanges.principal = loan.principal;
+        afterChanges.principal = newPrincipal;
+        effectivePrincipal = newPrincipal;
+        principalChanged = true;
+      }
+    }
+
+    let effectiveInterestRate = loan.interestRate;
+    if (payload.interestRate !== undefined) {
+      const newRate = Number(payload.interestRate);
+      if (isNaN(newRate) || newRate < 0) {
+        const err: any = new Error('Interest rate must be a non-negative number.');
+        err.statusCode = 400;
+        err.code = 'INVALID_INTEREST_RATE';
+        throw err;
+      }
+      if (newRate !== loan.interestRate) {
+        beforeChanges.interestRate = loan.interestRate;
+        afterChanges.interestRate = newRate;
+        effectiveInterestRate = newRate;
+      }
+    }
+
+    let effectiveDate = loan.date;
+    if (payload.date !== undefined && String(payload.date).trim() !== loan.date) {
+      const dateValidation = validateLoanIssueDate(String(payload.date).trim());
+      if (!dateValidation.isValid) {
+        const err: any = new Error(dateValidation.error || 'Invalid loan issue date.');
+        err.statusCode = 400;
+        err.code = dateValidation.code || 'INVALID_ISSUE_DATE';
+        throw err;
+      }
+      beforeChanges.date = loan.date;
+      afterChanges.date = dateValidation.formattedDate!;
+      effectiveDate = dateValidation.formattedDate!;
+    }
+
+    let effectiveItems = loan.items;
+    let effectiveMarketValue = payload.marketValue !== undefined ? Number(payload.marketValue) : loan.marketValue;
+    if (payload.items !== undefined && Array.isArray(payload.items) && payload.items.length > 0) {
+      effectiveItems = payload.items;
+    }
+
+    // Financial calculations using established financial calculation method
+    const calc = this.calculateFinancials(
+      effectivePrincipal,
+      effectiveInterestRate,
+      effectiveItems,
+      effectiveMarketValue
+    );
+
+    // Calculate new outstanding principal
+    const outstandingBefore = loan.outstandingPrincipal ?? loan.principal;
+    let effectiveOutstanding: number;
+    if (loan.status === 'CLOSED' && payload.status !== 'ACTIVE') {
+      effectiveOutstanding = 0;
+    } else {
+      effectiveOutstanding = Math.max(0, effectivePrincipal - totalPrincipalRepaid);
+    }
+
+    if (effectiveOutstanding !== outstandingBefore) {
+      beforeChanges.outstandingPrincipal = outstandingBefore;
+      afterChanges.outstandingPrincipal = effectiveOutstanding;
+    }
+
+    if (calc.monthlyInterest !== loan.monthlyInterest) {
+      beforeChanges.monthlyInterest = loan.monthlyInterest;
+      afterChanges.monthlyInterest = calc.monthlyInterest;
+    }
+
+    // Status change
+    let effectiveStatus = loan.status;
+    if (payload.status !== undefined && payload.status !== loan.status) {
+      const validStatuses = ['ACTIVE', 'CLOSED', 'PENDING', 'OVERDUE'];
+      if (!validStatuses.includes(payload.status)) {
+        const err: any = new Error(`Invalid loan status. Must be one of: ${validStatuses.join(', ')}`);
+        err.statusCode = 400;
+        err.code = 'INVALID_STATUS';
+        throw err;
+      }
+      beforeChanges.status = loan.status;
+      afterChanges.status = payload.status;
+      effectiveStatus = payload.status as any;
+      if (effectiveStatus === 'CLOSED') {
+        effectiveOutstanding = 0;
+      }
+    }
+
+    // Next due date
+    let effectiveNextDueDate = loan.nextDueDate;
+    if (payload.nextDueDate !== undefined && payload.nextDueDate !== loan.nextDueDate) {
+      beforeChanges.nextDueDate = loan.nextDueDate;
+      afterChanges.nextDueDate = payload.nextDueDate;
+      effectiveNextDueDate = payload.nextDueDate;
+    }
+
+    // Notes
+    let effectiveNotes = loan.notes;
+    if (payload.notes !== undefined && payload.notes !== loan.notes) {
+      beforeChanges.notes = loan.notes;
+      afterChanges.notes = payload.notes;
+      effectiveNotes = payload.notes;
+    }
+
+    // Nominee
+    let effectiveNominee = loan.nominee;
+    if (payload.nominee !== undefined) {
+      beforeChanges.nominee = loan.nominee;
+      afterChanges.nominee = payload.nominee;
+      effectiveNominee = payload.nominee;
+    }
+
+    // Guarantor
+    let effectiveGuarantor = loan.guarantor;
+    if (payload.guarantor !== undefined) {
+      beforeChanges.guarantor = loan.guarantor;
+      afterChanges.guarantor = payload.guarantor;
+      effectiveGuarantor = payload.guarantor;
+    }
+
+    const updatedLoanData: Partial<Loan> = {
+      principal: effectivePrincipal,
+      interestRate: effectiveInterestRate,
+      date: effectiveDate,
+      items: calc.normalizedItems,
+      totalGrossWeight: calc.totalGrossWeight,
+      totalDeductionWeight: calc.totalDeductionWeight,
+      totalNetWeight: calc.totalNetWeight,
+      marketValue: calc.marketValue,
+      ltv: calc.ltv,
+      monthlyInterest: calc.monthlyInterest,
+      outstandingPrincipal: effectiveOutstanding,
+      accruedInterest: calc.monthlyInterest,
+      status: effectiveStatus,
+      nextDueDate: effectiveNextDueDate,
+      notes: effectiveNotes,
+      nominee: effectiveNominee,
+      guarantor: effectiveGuarantor,
+      updatedAt: new Date().toISOString()
+    };
+
+    // Optimistic Concurrency Protection: pass expectedVersion if supplied
+    const updateOptions: any = { actor };
+    if (typeof payload.version === 'number') {
+      updateOptions.expectedVersion = payload.version;
+    }
+
+    const updatedEnvelope = await firestoreRepository.updateRecord<Loan>(
+      'LOAN',
+      loan.id,
+      updatedLoanData,
+      updateOptions
+    );
+
+    // Update customer totalBorrowed and activeLoansCount if financial/status changed
+    const customer = customerService.getById(loan.customerId);
+    if (customer) {
+      const customerUpdates: Partial<any> = {};
+      if (principalChanged) {
+        const principalDiff = new Decimal(effectivePrincipal).minus(loan.principal).toNumber();
+        customerUpdates.totalBorrowed = new Decimal(customer.totalBorrowed || 0).plus(principalDiff).toNumber();
+      }
+      if (beforeChanges.status) {
+        if (beforeChanges.status === 'ACTIVE' && effectiveStatus === 'CLOSED') {
+          customerUpdates.activeLoansCount = Math.max(0, (customer.activeLoansCount || 1) - 1);
+        } else if (beforeChanges.status === 'CLOSED' && effectiveStatus === 'ACTIVE') {
+          customerUpdates.activeLoansCount = (customer.activeLoansCount || 0) + 1;
+        }
+      }
+      if (Object.keys(customerUpdates).length > 0) {
+        await customerService.update(customer.id, customerUpdates);
+      }
+    }
+
+    // Record audit entry
+    await StaffAuditModel.create({
+      staffId: actor?.uid || actor?.name || 'ADMIN',
+      staffUid: actor?.uid || 'ADMIN',
+      staffEmail: actor?.email || '',
+      action: 'LOAN_EDIT',
+      performedBy: actor?.uid || actor?.name || 'ADMIN',
+      actorEmail: actor?.email || '',
+      description: `Loan ${loan.loanNo} updated by Admin: ${reason}`,
+      details: {
+        loanId: loan.id,
+        loanNo: loan.loanNo,
+        customerId: loan.customerId,
+        customerName: loan.customerName,
+        reason,
+        changes: {
+          before: beforeChanges,
+          after: afterChanges
+        }
+      },
+      ipAddress: meta?.ipAddress,
+      userAgent: meta?.userAgent,
+      timestamp: new Date()
+    });
+
+    return updatedEnvelope.data;
   }
 
   public async deleteAsync(id: string): Promise<boolean> {
     const loan = this.getById(id);
     if (!loan) return false;
 
-    const res = await telegramRepository.deleteRecord('LOAN', loan.id, false);
+    const res = await firestoreRepository.deleteRecord('LOAN', loan.id, false);
     return res.success;
   }
 
@@ -524,8 +760,112 @@ export class LoanService {
     const loan = this.getById(id);
     if (!loan) return false;
 
-    telegramRepository.deleteRecord('LOAN', loan.id, false).catch(() => {});
+    firestoreRepository.deleteRecord('LOAN', loan.id, false).catch(() => {});
     return true;
+  }
+
+  /**
+   * Admin-Only Loan Delete / Cancellation with financial safety checks, soft delete, customer metrics sync, and audit logging.
+   */
+  public async adminDeleteLoanAsync(
+    id: string,
+    reason: string,
+    actor?: { uid?: string; email?: string; role?: string; name?: string },
+    meta?: { ipAddress?: string; userAgent?: string }
+  ): Promise<{ success: boolean; message: string }> {
+    const loan = this.getById(id);
+    if (!loan) {
+      const err: any = new Error(`Loan with ID "${id}" not found.`);
+      err.statusCode = 404;
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+
+    const cleanReason = (reason || '').trim();
+    if (!cleanReason) {
+      const err: any = new Error('A deletion or cancellation reason is required for administrative audit logging.');
+      err.statusCode = 400;
+      err.code = 'REASON_REQUIRED';
+      throw err;
+    }
+
+    // Financial Safety & Archival: Check if loan has any repayment receipts recorded
+    const allReceipts = await receiptService.getAllAsync();
+    const loanReceipts = allReceipts.filter((r) => r.loanId === loan.id || r.loanNo === loan.loanNo);
+    const repaymentReceipts = loanReceipts.filter((r) => r.kind !== 'LOAN DISBURSEMENT' && r.kind !== 'NEW LOAN');
+    const totalRepaid = repaymentReceipts.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+    const hasRepayments = repaymentReceipts.length > 0;
+
+    const noteAnnotation = hasRepayments
+      ? `[ADMIN REMOVED/ARCHIVED: ${cleanReason} | Retained ${repaymentReceipts.length} historical repayment receipt(s) totaling ₹${totalRepaid.toLocaleString('en-IN')}]`
+      : `[CANCELLED/DELETED: ${cleanReason}]`;
+    const updatedNotes = loan.notes ? `${loan.notes}\n${noteAnnotation}` : noteAnnotation;
+
+    // Update status to CLOSED and note cancellation reason before soft delete
+    await firestoreRepository.updateRecord<Loan>(
+      'LOAN',
+      loan.id,
+      {
+        status: 'CLOSED',
+        outstandingPrincipal: 0,
+        notes: updatedNotes,
+        updatedAt: new Date().toISOString()
+      },
+      { actor }
+    );
+
+    // Soft-delete the loan record (excludes from active loan management, preserves auditability)
+    const deleteRes = await firestoreRepository.deleteRecord('LOAN', loan.id, false, actor);
+    if (!deleteRes.success) {
+      throw new Error(deleteRes.message || 'Failed to soft delete loan record');
+    }
+
+    // Update Customer activeLoansCount and totalBorrowed
+    const customer = customerService.getById(loan.customerId);
+    if (customer) {
+      const wasActive = loan.status === 'ACTIVE' || loan.status === 'OVERDUE' || loan.status === 'PENDING';
+      const newActiveCount = wasActive ? Math.max(0, (customer.activeLoansCount || 1) - 1) : (customer.activeLoansCount || 0);
+      const newTotalBorrowed = Math.max(0, new Decimal(customer.totalBorrowed || 0).minus(loan.principal || 0).toNumber());
+      await customerService.update(customer.id, {
+        activeLoansCount: newActiveCount,
+        totalBorrowed: newTotalBorrowed
+      });
+    }
+
+    // Record audit entry
+    await StaffAuditModel.create({
+      staffId: actor?.uid || actor?.name || 'ADMIN',
+      staffUid: actor?.uid || 'ADMIN',
+      staffEmail: actor?.email || '',
+      action: 'LOAN_DELETE',
+      performedBy: actor?.uid || actor?.name || 'ADMIN',
+      actorEmail: actor?.email || '',
+      description: hasRepayments
+        ? `Loan ${loan.loanNo} removed/archived by Admin: ${cleanReason} (${repaymentReceipts.length} historical receipts totaling ₹${totalRepaid.toLocaleString('en-IN')} preserved)`
+        : `Loan ${loan.loanNo} deleted/cancelled by Admin: ${cleanReason}`,
+      details: {
+        loanId: loan.id,
+        loanNo: loan.loanNo,
+        customerId: loan.customerId,
+        customerName: loan.customerName,
+        principal: loan.principal,
+        reason: cleanReason,
+        historicalReceiptsCount: repaymentReceipts.length,
+        totalRepaidPreserved: totalRepaid,
+        receiptsPreserved: hasRepayments,
+        deletedAt: new Date().toISOString()
+      },
+      ipAddress: meta?.ipAddress,
+      userAgent: meta?.userAgent,
+      timestamp: new Date()
+    });
+
+    return {
+      success: true,
+      message: hasRepayments
+        ? `Loan ${loan.loanNo} removed from active management. ${repaymentReceipts.length} historical receipt record(s) safely preserved.`
+        : `Loan ${loan.loanNo} successfully deleted and cancelled.`
+    };
   }
 
   public async getPendingLoansAsync(customerId?: string, asOfDateStr?: string): Promise<{ loan: Loan; metrics: any }[]> {

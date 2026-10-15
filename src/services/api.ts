@@ -1,6 +1,19 @@
 import axios, { AxiosInstance } from 'axios';
 
-// Supports Telegram Bot API Remote Persistent Storage + Local Storage Vault + Custom JWT Auth & RBAC
+// Supports Cloud Firestore Remote Persistent Storage + Local Storage Vault + Custom JWT Auth & RBAC
+
+export interface BackupPackageMetadata {
+  backupId: string;
+  fileName: string;
+  createdAt: string;
+  fileSize: number;
+  fileSizeFormatted?: string;
+  sha256?: string;
+  schemaVersion?: string;
+  collectionsCount?: number;
+  totalRecords: number;
+  status?: string;
+}
 
 export const DEFAULT_LOCAL_API_BASE_URL = 'http://127.0.0.1:8080/api';
 
@@ -663,6 +676,18 @@ export const apiService = {
       body: JSON.stringify(loan),
     });
   },
+  async updateLoan(id: string, updates: any) {
+    return fetchWithAuth<any>(`/loans/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
+  },
+  async deleteLoan(id: string, reason: string) {
+    return fetchWithAuth<{ success: boolean; message: string }>(`/loans/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason }),
+    });
+  },
   async closeLoan(loanNo: string) {
     return fetchJson<any>(`/loans/${loanNo}/close`, {
       method: 'POST',
@@ -716,10 +741,41 @@ export const apiService = {
       body: JSON.stringify(fd),
     });
   },
-  async payFDInterest(fdNo: string, amount: number, mode: string, dueDate?: string, periodKey?: string) {
+  async downloadFDReceiptPdf(fdNo: string) {
+    const baseUrl = getApiBaseUrl();
+    const token = getStoredAuthToken();
+    const res = await fetch(`${baseUrl}/fd/deposits/${encodeURIComponent(fdNo)}/receipt/pdf`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      }
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(json.message || 'Failed to generate Fixed Deposit receipt PDF.');
+    }
+    return res.blob();
+  },
+  async downloadFDInterestReceiptPdf(voucherOrId: string) {
+    const baseUrl = getApiBaseUrl();
+    const token = getStoredAuthToken();
+    const res = await fetch(`${baseUrl}/fd/interest/${encodeURIComponent(voucherOrId)}/receipt/pdf`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      }
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(json.message || 'Failed to generate Fixed Deposit interest receipt PDF.');
+    }
+    return res.blob();
+  },
+  async payFDInterest(fdNo: string, amount: number, mode: string, options?: any, periodKey?: string) {
+    const payload = typeof options === 'object' && options !== null
+      ? { amount, mode, ...options }
+      : { amount, mode, dueDate: options, periodKey };
     return fetchJson<any>(`/fd/deposits/${fdNo}/payout`, {
       method: 'POST',
-      body: JSON.stringify({ amount, mode, dueDate, periodKey })
+      body: JSON.stringify(payload)
     });
   },
   async withdrawFD(
@@ -859,6 +915,17 @@ export const apiService = {
     }
   },
 
+  // ── Configuration Center & Storage Diagnostics ────────────────────────────
+  async getConfigCenterStatus() {
+    return fetchJson<any>('/config-center/status');
+  },
+  async unlockConfigCenter(password: string) {
+    return fetchJson<any>('/config-center/auth/unlock', {
+      method: 'POST',
+      body: JSON.stringify({ password })
+    });
+  },
+
   // ── Backup & Restore ───────────────────────────────────────────────────────
   async createCloudBackup(backupData?: any, deviceId?: string) {
     return fetchJson<any>('/backup/create', {
@@ -906,32 +973,16 @@ export const apiService = {
     return fetchJson<any>('/sync/events');
   },
 
-  // ── Telegram Integration ───────────────────────────────────────────────────
-  async getTelegramConfig() {
-    return fetchJson<any>('/telegram/config');
-  },
-  async updateTelegramConfig(config: any) {
-    return fetchJson<any>('/telegram/config', {
-      method: 'PUT',
-      body: JSON.stringify(config)
-    });
-  },
-  async testTelegram() {
-    return fetchJson<any>('/telegram/test', {
-      method: 'POST'
-    });
-  },
-  async backupTelegram() {
-    return fetchJson<any>('/telegram/backup', {
+
+  // ── Production Backup Package Management ───────────────────────────────────
+  async createLatestBackup(): Promise<{ success: boolean; data?: any; message?: string }> {
+    return fetchWithAuth('/admin/backup/create-latest', {
       method: 'POST'
     });
   },
 
-  // ── Production Backup Package Management ───────────────────────────────────
   async createBackupPackage(): Promise<{ success: boolean; data?: any; message?: string }> {
-    return fetchWithAuth('/admin/backup/create', {
-      method: 'POST'
-    });
+    return this.createLatestBackup();
   },
 
   async getBackupHistory(): Promise<{ success: boolean; data?: any[]; message?: string }> {
@@ -1053,6 +1104,78 @@ export const apiService = {
     });
   },
 
+  async listBackupPackages(): Promise<{ success: boolean; data?: any[]; message?: string }> {
+    const res = await fetchWithAuth<any[]>('/admin/backup/history');
+    return {
+      success: res.success,
+      data: res.data || [],
+      message: res.message
+    };
+  },
+
+  async downloadBackupPackage(
+    backupId: string,
+    customFileName?: string
+  ): Promise<{ success: boolean; fileName?: string; message?: string }> {
+    return this.downloadBackup(backupId, customFileName);
+  },
+
+  async deleteBackup(backupId: string): Promise<{ success: boolean; message?: string }> {
+    return fetchWithAuth(`/admin/backup/${encodeURIComponent(backupId)}`, {
+      method: 'DELETE'
+    });
+  },
+
+  async getDatabaseInfo(): Promise<{
+    success: boolean;
+    status: string;
+    databaseType: string;
+    storageLocation: string;
+    lastAutoSync: string;
+    lastBackup: string;
+    databaseSize: string;
+    collectionsCount: number;
+    totalRecords: number;
+    collections: Record<string, number>;
+    message?: string;
+  }> {
+    const res = await fetchWithAuth<any>('/admin/database/info');
+    if (res.success) {
+      const data = res.data || res;
+      return {
+        success: true,
+        status: data.status || 'Connected',
+        databaseType: data.databaseType || 'Local Storage',
+        storageLocation: data.storageLocation || 'Local',
+        lastAutoSync: data.lastAutoSync || '',
+        lastBackup: data.lastBackup || 'Never',
+        databaseSize: data.databaseSize || '0 KB',
+        collectionsCount: data.collectionsCount || 10,
+        totalRecords: data.totalRecords || 0,
+        collections: data.collections || {}
+      };
+    }
+    return {
+      success: false,
+      status: 'Disconnected',
+      databaseType: 'Local Storage',
+      storageLocation: 'Local',
+      lastAutoSync: '',
+      lastBackup: 'Never',
+      databaseSize: '0 KB',
+      collectionsCount: 0,
+      totalRecords: 0,
+      collections: {},
+      message: res.message
+    };
+  },
+
+  async clearSyncCache(): Promise<{ success: boolean; message?: string }> {
+    return fetchWithAuth('/admin/danger/clear-sync-cache', {
+      method: 'POST'
+    });
+  },
+
   // ── Wipe All Data ──────────────────────────────────────────────────────────
   async getWipePreview(): Promise<{
     success: boolean;
@@ -1136,10 +1259,10 @@ export const apiService = {
     }
   },
 
-  async executeSystemRestore(token: string, confirmationText: string): Promise<{ success: boolean; data?: any; message?: string; restore?: any; recordCounts?: any }> {
+  async executeSystemRestore(token: string, confirmationText: string, mode: 'replace' | 'merge' = 'replace'): Promise<{ success: boolean; data?: any; message?: string; restore?: any; recordCounts?: any; report?: any }> {
     return fetchWithAuth('/admin/system/restore', {
       method: 'POST',
-      body: JSON.stringify({ token, confirmationText })
+      body: JSON.stringify({ token, confirmationText, mode })
     });
   },
 
@@ -1431,7 +1554,7 @@ export const apiService = {
       if (typeof fileIdOrDoc === 'object' && fileIdOrDoc !== null) {
         target =
           fileIdOrDoc.fileId ||
-          fileIdOrDoc.telegramFileId ||
+          fileIdOrDoc.storagePath ||
           fileIdOrDoc.viewUrl ||
           fileIdOrDoc.url ||
           fileIdOrDoc.id ||
@@ -1481,7 +1604,7 @@ export const apiService = {
       if (typeof fileIdOrDoc === 'object' && fileIdOrDoc !== null) {
         target =
           fileIdOrDoc.fileId ||
-          fileIdOrDoc.telegramFileId ||
+          fileIdOrDoc.storagePath ||
           fileIdOrDoc.viewUrl ||
           fileIdOrDoc.url ||
           fileIdOrDoc.id ||

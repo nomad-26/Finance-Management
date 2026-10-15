@@ -1,21 +1,38 @@
 import dotenv from 'dotenv';
 import path from 'path';
-import { getStorageBaseDir } from './storage.js';
+import fs from 'fs';
+import { getStorageBaseDir, getConfigDirectory } from './storage.js';
 
 // Multi-path .env resolution
 const currentDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
 
-const envPaths = [
-  path.resolve(process.cwd(), '.env'),
-  path.resolve(process.cwd(), 'backend/.env'),
+// 1. Fallback base env paths (packaged resources or dev repo root)
+const baseEnvPaths = [
   path.resolve(currentDir, '.env'),
   path.resolve(currentDir, '../.env'),
   path.resolve(currentDir, '../../.env'),
-  path.resolve(currentDir, '../backend/.env')
+  path.resolve(currentDir, '../backend/.env'),
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(process.cwd(), 'backend/.env')
 ];
 
-for (const envPath of envPaths) {
-  dotenv.config({ path: envPath, override: true });
+for (const envPath of baseEnvPaths) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath, override: false });
+  }
+}
+
+// 2. Persistent UserData / AppData configuration (PRIORITY - overrides defaults)
+try {
+  const configDir = getConfigDirectory();
+  if (configDir) {
+    const persistentEnvPath = path.join(configDir, '.env');
+    if (fs.existsSync(persistentEnvPath)) {
+      dotenv.config({ path: persistentEnvPath, override: true });
+    }
+  }
+} catch (err: any) {
+  // Silent fallback if filesystem access fails
 }
 
 function normalizePrivateKey(rawKey: string | undefined): string {
@@ -37,13 +54,16 @@ export const env = {
   ADMIN_EMAIL: (process.env.ADMIN_EMAIL || 'kkvgoldfinance13@gmail.com').trim().toLowerCase(),
   ADMIN_PASSWORD: process.env.ADMIN_INITIAL_PASSWORD || process.env.ADMIN_PASSWORD || 'Admin@123456',
   ADMIN_INITIAL_PASSWORD: process.env.ADMIN_INITIAL_PASSWORD || process.env.ADMIN_PASSWORD || 'Admin@123456',
+  ADMIN_CONFIG_PASSWORD: (process.env.ADMIN_CONFIG_PASSWORD || 'admin123').trim(),
   LOCAL_STORAGE_PATH: process.env.LOCAL_STORAGE_PATH && !process.env.LOCAL_STORAGE_PATH.startsWith('./')
     ? path.resolve(process.env.LOCAL_STORAGE_PATH)
     : path.join(getStorageBaseDir(), 'uploads'),
   
-  // Telegram Bot API Persistent Storage Configuration
-  TELEGRAM_BOT_TOKEN: (process.env.TELEGRAM_BOT_TOKEN || '').trim(),
-  TELEGRAM_CHAT_ID: (process.env.TELEGRAM_CHAT_ID || '').trim(),
+  // Primary Database: Cloud Firestore Configuration (Project: kkv-finance-4b3bf)
+  FIREBASE_PROJECT_ID: (process.env.FIREBASE_PROJECT_ID || 'kkv-finance-4b3bf').trim(),
+  FIREBASE_STORAGE_BUCKET: (process.env.FIREBASE_STORAGE_BUCKET || 'kkv-finance-4b3bf.firebasestorage.app').trim(),
+  FIREBASE_API_KEY: (process.env.FIREBASE_API_KEY || 'AIzaSyCwSG5LIzQVRYZZOs076tMcApXNdjE7pK8').trim(),
+  FIREBASE_AUTH_DOMAIN: (process.env.FIREBASE_AUTH_DOMAIN || 'kkv-finance-4b3bf.firebaseapp.com').trim(),
 
   // Google Service / Drive optional attachments
   GOOGLE_CLOUD_PROJECT_ID: (process.env.GOOGLE_CLOUD_PROJECT_ID || process.env.GOOGLE_PROJECT_ID || 'kkv-gold-507605').trim(),
@@ -60,8 +80,7 @@ export const env = {
 
 export function validateStartupConfig(): { isValid: boolean; missingVars: string[] } {
   const missingVars: string[] = [];
-  if (!env.TELEGRAM_BOT_TOKEN) missingVars.push('TELEGRAM_BOT_TOKEN');
-  if (!env.TELEGRAM_CHAT_ID) missingVars.push('TELEGRAM_CHAT_ID');
+  if (!env.FIREBASE_PROJECT_ID) missingVars.push('FIREBASE_PROJECT_ID');
 
   return {
     isValid: missingVars.length === 0,

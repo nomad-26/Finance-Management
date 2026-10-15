@@ -2,6 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Loan } from '../types';
 import { calculateLoanOverdueAndDues } from '../utils/loanCalculationUtils';
+import { isAdminRole } from '../config/permissions';
+import { EditLoanModal } from '../components/admin/EditLoanModal';
+import { DeleteLoanModal } from '../components/admin/DeleteLoanModal';
 import {
   Receipt as ReceiptIcon,
   FileSpreadsheet,
@@ -19,7 +22,9 @@ import {
   ChevronLeft,
   ChevronRight,
   AlertTriangle,
-  X
+  X,
+  Edit3,
+  Trash2
 } from 'lucide-react';
 
 export const LoanDisplay: React.FC = () => {
@@ -32,8 +37,13 @@ export const LoanDisplay: React.FC = () => {
     setCurrentPage,
     setSelectedProfileCustomerId,
     showToast,
-    masterControlSettings
+    masterControlSettings,
+    userRole
   } = useApp();
+
+  const isAdmin = isAdminRole(userRole);
+  const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
+  const [deletingLoan, setDeletingLoan] = useState<Loan | null>(null);
 
   // Selected single loan detail inspection state
   const [inspectingLoan, setInspectingLoan] = useState<Loan | null>(selectedLoan || null);
@@ -237,7 +247,7 @@ export const LoanDisplay: React.FC = () => {
             <span>← Back to All Loans</span>
           </button>
 
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <button
               type="button"
               className="btn btn-primary"
@@ -247,6 +257,28 @@ export const LoanDisplay: React.FC = () => {
               <ReceiptIcon size={16} />
               <span>Collect Payment / Receipt</span>
             </button>
+            {isAdmin && (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setEditingLoan(inspectingLoan)}
+                  style={{ gap: '8px', fontWeight: 700 }}
+                >
+                  <Edit3 size={16} />
+                  <span>Edit Loan</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setDeletingLoan(inspectingLoan)}
+                  style={{ gap: '8px', fontWeight: 700, color: 'var(--color-danger, #ef4444)' }}
+                >
+                  <Trash2 size={16} />
+                  <span>Delete Loan</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -1089,6 +1121,35 @@ export const LoanDisplay: React.FC = () => {
             ))}
           </div>
         </div>
+
+        {/* ADMIN EDIT / DELETE LOAN MODALS FOR SINGLE LOAN VIEW */}
+        {isAdmin && (
+          <>
+            <EditLoanModal
+              isOpen={!!editingLoan}
+              loan={editingLoan}
+              onClose={() => setEditingLoan(null)}
+              onSuccess={() => {
+                setEditingLoan(null);
+                if (inspectingLoan && editingLoan?.id === inspectingLoan.id) {
+                  const updated = loans.find((l) => l.id === inspectingLoan.id);
+                  if (updated) setInspectingLoan(updated);
+                }
+              }}
+            />
+            <DeleteLoanModal
+              isOpen={!!deletingLoan}
+              loan={deletingLoan}
+              onClose={() => setDeletingLoan(null)}
+              onSuccess={() => {
+                setDeletingLoan(null);
+                if (inspectingLoan && deletingLoan?.id === inspectingLoan.id) {
+                  handleBackToAllLoans();
+                }
+              }}
+            />
+          </>
+        )}
       </div>
     );
   }
@@ -1343,7 +1404,7 @@ export const LoanDisplay: React.FC = () => {
                   OUTSTANDING {sortField === 'outstandingPrincipal' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
                 <th>STATUS</th>
-                <th style={{ textAlign: 'center', width: '100px' }}>ACTIONS</th>
+                <th style={{ textAlign: 'center', width: isAdmin ? '210px' : '100px' }}>ACTIONS</th>
               </tr>
             </thead>
             <tbody>
@@ -1438,16 +1499,49 @@ export const LoanDisplay: React.FC = () => {
                         </span>
                       </td>
                       <td style={{ textAlign: 'center' }}>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          style={{ height: '30px', padding: '0 10px', fontSize: '11.5px', gap: '4px', fontWeight: 700 }}
-                          title="View Complete Loan Details"
-                          onClick={() => handleOpenLoanDetails(loan)}
-                        >
-                          <Eye size={13} />
-                          <span>View</span>
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ height: '30px', padding: '0 10px', fontSize: '11.5px', gap: '4px', fontWeight: 700 }}
+                            title="View Complete Loan Details"
+                            onClick={() => handleOpenLoanDetails(loan)}
+                          >
+                            <Eye size={13} />
+                            <span>View</span>
+                          </button>
+                          {isAdmin && (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{ height: '30px', padding: '0 8px', fontSize: '11.5px', gap: '4px', fontWeight: 700 }}
+                                title="Admin Edit Loan"
+                                onClick={() => setEditingLoan(loan)}
+                              >
+                                <Edit3 size={13} />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{
+                                  height: '30px',
+                                  padding: '0 8px',
+                                  fontSize: '11.5px',
+                                  gap: '4px',
+                                  fontWeight: 700,
+                                  color: 'var(--color-danger, #ef4444)'
+                                }}
+                                title="Admin Delete Loan"
+                                onClick={() => setDeletingLoan(loan)}
+                              >
+                                <Trash2 size={13} />
+                                <span>Delete</span>
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1513,6 +1607,28 @@ export const LoanDisplay: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* ADMIN EDIT / DELETE LOAN MODALS FOR ALL LOANS VIEW */}
+      {isAdmin && (
+        <>
+          <EditLoanModal
+            isOpen={!!editingLoan}
+            loan={editingLoan}
+            onClose={() => setEditingLoan(null)}
+            onSuccess={() => {
+              setEditingLoan(null);
+            }}
+          />
+          <DeleteLoanModal
+            isOpen={!!deletingLoan}
+            loan={deletingLoan}
+            onClose={() => setDeletingLoan(null)}
+            onSuccess={() => {
+              setDeletingLoan(null);
+            }}
+          />
+        </>
+      )}
     </div>
   );
 };

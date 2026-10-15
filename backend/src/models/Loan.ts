@@ -1,5 +1,5 @@
 import { Loan } from '../types/index.js';
-import { telegramRepository } from '../telegram/telegram.repository.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 
 export interface ILoanDocument extends Omit<Loan, 'id'> {
   id: string;
@@ -8,7 +8,7 @@ export interface ILoanDocument extends Omit<Loan, 'id'> {
 export class LoanModel {
   public static find(query: any = {}): any {
     const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
-    let records = telegramRepository.getRecords<Loan>('LOAN', { includeDeleted });
+    let records = firestoreRepository.getRecords<Loan>('LOAN', { includeDeleted });
 
     if (query.customerId) {
       records = records.filter((l) => l.customerId === query.customerId);
@@ -31,7 +31,7 @@ export class LoanModel {
 
   public static findOne(query: any = {}): any {
     const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
-    const records = telegramRepository.getRecords<Loan>('LOAN', { includeDeleted });
+    const records = firestoreRepository.getRecords<Loan>('LOAN', { includeDeleted });
 
     let match: Loan | null = null;
     if (query.loanNo) {
@@ -61,23 +61,23 @@ export class LoanModel {
     const id = doc.id || doc.loanNo || query.id || query.loanNo;
     if (!id) return null;
 
-    const existing = telegramRepository.getRecordById<Loan>('LOAN', id, true);
+    const existing = firestoreRepository.getRecordById<Loan>('LOAN', id, true);
     if (existing) {
-      const updated = await telegramRepository.updateRecord<Loan>('LOAN', id, doc);
+      const updated = await firestoreRepository.updateRecord<Loan>('LOAN', id, doc);
       return updated.data;
     } else {
-      const created = await telegramRepository.createRecord<Loan>('LOAN', id, doc);
+      const created = await firestoreRepository.createRecord<Loan>('LOAN', id, doc);
       return created.data;
     }
   }
 
   public static async countDocuments(query: any = {}): Promise<number> {
     const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
-    return telegramRepository.countRecords('LOAN', undefined, includeDeleted);
+    return firestoreRepository.countRecords('LOAN', undefined, includeDeleted);
   }
 
   public static async deleteMany(query: any = {}): Promise<{ deletedCount: number }> {
-    const { cleared } = await telegramRepository.resetApplicationData(['LOAN']);
+    const { cleared } = await firestoreRepository.resetApplicationData(['LOAN']);
     return { deletedCount: cleared };
   }
 
@@ -85,7 +85,7 @@ export class LoanModel {
     const results = [];
     for (const d of docs) {
       const id = d.id || d.loanNo;
-      const res = await telegramRepository.createRecord('LOAN', id, d);
+      const res = await firestoreRepository.createRecord('LOAN', id, d);
       results.push(res.data);
     }
     return results;

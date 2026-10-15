@@ -1,6 +1,7 @@
-import { telegramRepository } from '../telegram/telegram.repository.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 import { counterService } from './counter.service.js';
 import { Customer } from '../types/index.js';
+import { CustomerModel } from '../models/Customer.js';
 
 export function normalizePhone(phone: string): string {
   if (!phone) return '';
@@ -17,7 +18,7 @@ export class CustomerService {
   }
 
   public getAll(includeDeleted: boolean = false): Customer[] {
-    const list = telegramRepository.getRecords<Customer>('CUSTOMER', { includeDeleted });
+    const list = firestoreRepository.getRecords<Customer>('CUSTOMER', { includeDeleted });
     return list.map((c) => ({
       ...c,
       id: c.id || (c as any).customerId,
@@ -109,7 +110,7 @@ export class CustomerService {
       updatedAt: new Date().toISOString()
     };
 
-    await telegramRepository.createRecord('CUSTOMER', id, newCustomer, actor);
+    await firestoreRepository.createRecord('CUSTOMER', id, newCustomer, actor);
 
     return newCustomer;
   }
@@ -143,7 +144,7 @@ export class CustomerService {
       updatedAt: new Date().toISOString()
     };
 
-    await telegramRepository.updateRecord('CUSTOMER', actualId, updatedData, { actor });
+    await firestoreRepository.updateRecord('CUSTOMER', actualId, updatedData, { actor });
 
     return updatedData;
   }
@@ -162,7 +163,7 @@ export class CustomerService {
       return { success: false, statusCode: 404, message: 'Customer not found' };
     }
 
-    await telegramRepository.deleteRecord('CUSTOMER', target.id, false, actor || { role: userRole });
+    await firestoreRepository.deleteRecord('CUSTOMER', target.id, false, actor || { role: userRole });
     return { success: true, message: 'Customer soft-deleted successfully' };
   }
 
@@ -180,7 +181,7 @@ export class CustomerService {
       return { success: false, statusCode: 404, message: 'Customer not found' };
     }
 
-    await telegramRepository.restoreRecord('CUSTOMER', target.id, actor || { role: userRole });
+    await firestoreRepository.restoreRecord('CUSTOMER', target.id, actor || { role: userRole });
     return { success: true, message: 'Customer restored successfully' };
   }
 
@@ -193,35 +194,14 @@ export class CustomerService {
       };
     }
 
-    const targetCust = this.getById(id);
-    if (!targetCust) {
-      return { success: false, statusCode: 404, message: 'Customer not found.' };
-    }
-
-    const custId = targetCust.id;
-
-    // 1. Delete Customer from Telegram
-    await telegramRepository.deleteRecord('CUSTOMER', custId, true);
-
-    // 2. Cascade delete loans for this customer
-    const loans = telegramRepository.getRecords<any>('LOAN', { includeDeleted: true });
-    for (const l of loans) {
-      if (l.customerId === custId || l.customerId === targetCust.customerId?.toString()) {
-        await telegramRepository.deleteRecord('LOAN', l.id || l.loanNo, true);
-      }
-    }
-
-    // 3. Cascade delete receipts
-    const receipts = telegramRepository.getRecords<any>('RECEIPT', { includeDeleted: true });
-    for (const r of receipts) {
-      if (r.customerId === custId || r.customerId === targetCust.customerId?.toString()) {
-        await telegramRepository.deleteRecord('RECEIPT', r.id || `RCPT-${r.receiptNo}`, true);
-      }
+    const res = await CustomerModel.deletePermanently(id);
+    if (!res.success) {
+      return { success: false, statusCode: 404, message: res.message || 'Customer not found.' };
     }
 
     return {
       success: true,
-      message: `Customer ${targetCust.name} (${targetCust.id}) permanently deleted.`
+      message: res.message
     };
   }
 }

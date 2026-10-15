@@ -40,6 +40,26 @@ export function getStorageBaseDir(): string {
  * Returns the path for configuration/state files
  */
 export function getConfigDirectory(): string {
+  // 1. Explicit override from environment (set by Electron BackendManager)
+  if (process.env.KKV_CONFIG_PATH && process.env.KKV_CONFIG_PATH.trim()) {
+    return path.resolve(process.env.KKV_CONFIG_PATH.trim());
+  }
+
+  // 2. Serverless environment (Vercel / Lambda)
+  if (isServerless) {
+    return path.join('/tmp', 'KKV_GOLD_FINANCE', 'config');
+  }
+
+  // 3. Desktop / Windows environment: User AppData guarantees write permissions
+  if (process.env.APPDATA) {
+    return path.join(process.env.APPDATA, 'kkv-gold-finance', 'config');
+  }
+
+  // 4. Linux / macOS user home directory
+  if (process.env.HOME) {
+    return path.join(process.env.HOME, '.kkv-gold-finance', 'config');
+  }
+
   return path.join(getStorageBaseDir(), 'config');
 }
 

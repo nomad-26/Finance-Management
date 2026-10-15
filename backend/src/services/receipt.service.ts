@@ -1,4 +1,4 @@
-import { telegramRepository } from '../telegram/telegram.repository.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 import { counterService } from './counter.service.js';
 import { Receipt } from '../types/index.js';
 
@@ -8,7 +8,7 @@ export class ReceiptService {
   }
 
   public getAll(): Receipt[] {
-    const list = telegramRepository.getRecords<Receipt>('RECEIPT');
+    const list = firestoreRepository.getRecords<Receipt>('RECEIPT');
     return list.sort((a, b) => (b.receiptNo || 0) - (a.receiptNo || 0));
   }
 
@@ -44,7 +44,7 @@ export class ReceiptService {
       createdAt: new Date().toISOString()
     };
 
-    await telegramRepository.createRecord('RECEIPT', id, newReceipt, actor);
+    await firestoreRepository.createRecord('RECEIPT', id, newReceipt, actor);
 
     return newReceipt;
   }

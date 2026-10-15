@@ -1,10 +1,10 @@
 import { Request, Response } from 'express';
 import { staffService } from '../services/staff.service.js';
-import { isTelegramStorageReady } from '../config/database.js';
+import { isFirestoreReady } from '../config/database.js';
 
 export const getStaffList = async (req: Request, res: Response) => {
   try {
-    if (!isTelegramStorageReady()) {
+    if (!isFirestoreReady()) {
       return res.status(503).json({
         success: false,
         message: 'Storage is currently initializing.',
@@ -22,7 +22,7 @@ export const getStaffList = async (req: Request, res: Response) => {
 
 export const getStaffProfile = async (req: Request, res: Response) => {
   try {
-    if (!isTelegramStorageReady()) {
+    if (!isFirestoreReady()) {
       return res.status(503).json({
         success: false,
         message: 'Storage is currently initializing.',
@@ -44,7 +44,7 @@ export const getStaffProfile = async (req: Request, res: Response) => {
 
 export const createStaff = async (req: Request, res: Response) => {
   try {
-    if (!isTelegramStorageReady()) {
+    if (!isFirestoreReady()) {
       return res.status(503).json({
         success: false,
         message: 'Storage is currently initializing.',
@@ -107,7 +107,7 @@ export const createStaff = async (req: Request, res: Response) => {
 
 export const updateStaff = async (req: Request, res: Response) => {
   try {
-    if (!isTelegramStorageReady()) {
+    if (!isFirestoreReady()) {
       return res.status(503).json({
         success: false,
         message: 'Storage is currently initializing.',
@@ -132,7 +132,7 @@ export const updateStaff = async (req: Request, res: Response) => {
 
 export const updateStaffPassword = async (req: Request, res: Response) => {
   try {
-    if (!isTelegramStorageReady()) {
+    if (!isFirestoreReady()) {
       return res.status(503).json({
         success: false,
         message: 'Storage is currently initializing.',
@@ -163,7 +163,7 @@ export const updateStaffPassword = async (req: Request, res: Response) => {
 
 export const toggleStaffStatus = async (req: Request, res: Response) => {
   try {
-    if (!isTelegramStorageReady()) {
+    if (!isFirestoreReady()) {
       return res.status(503).json({
         success: false,
         message: 'Storage is currently initializing.',
@@ -208,7 +208,7 @@ export const revokeStaffSessions = (req: Request, res: Response) => {
 
 export const deleteStaff = async (req: Request, res: Response) => {
   try {
-    if (!isTelegramStorageReady()) {
+    if (!isFirestoreReady()) {
       return res.status(503).json({
         success: false,
         message: 'Storage is currently initializing.',
@@ -232,7 +232,7 @@ export const deleteStaff = async (req: Request, res: Response) => {
 
 export const searchStaff = async (req: Request, res: Response) => {
   try {
-    if (!isTelegramStorageReady()) {
+    if (!isFirestoreReady()) {
       return res.status(503).json({
         success: false,
         message: 'Storage is currently initializing.',
@@ -251,7 +251,7 @@ export const searchStaff = async (req: Request, res: Response) => {
 
 export const getAuditLogs = async (req: Request, res: Response) => {
   try {
-    if (!isTelegramStorageReady()) {
+    if (!isFirestoreReady()) {
       return res.status(503).json({
         success: false,
         message: 'Storage is currently initializing.',
@@ -372,7 +372,7 @@ export const resetPassword = async (req: Request, res: Response) => {
  */
 export const retryDriveAccess = async (req: Request, res: Response) => {
   try {
-    if (!isTelegramStorageReady()) {
+    if (!isFirestoreReady()) {
       return res.status(503).json({
         success: false,
         message: 'Storage is currently initializing.',

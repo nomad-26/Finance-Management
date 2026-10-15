@@ -1,11 +1,10 @@
 import bcrypt from 'bcrypt';
 import { localFileRepository } from '../repositories/localFile.repository.js';
-import { MasterControlSettings, WhatsAppTemplates, TelegramConfig, BranchSettings } from '../types/index.js';
+import { MasterControlSettings, WhatsAppTemplates, BranchSettings } from '../types/index.js';
 import { DEFAULT_BRANCH_SETTINGS } from '../config/company.config.js';
 
 const SETTINGS_FILE = 'settings.json';
 const WA_FILE = 'whatsapp_templates.json';
-const TG_FILE = 'telegram_settings.json';
 
 const defaultMasterSettings: MasterControlSettings = {
   branchSettings: DEFAULT_BRANCH_SETTINGS,
@@ -197,14 +196,6 @@ const defaultWhatsAppTemplates: WhatsAppTemplates = {
   receiptMessage: 'Dear {name}, payment receipt #{billNo} of ₹{amount} for loan {loanId} has been successfully recorded on {date}. Thank you, {bankName}.'
 };
 
-const defaultTelegramConfig: TelegramConfig = {
-  botToken: '',
-  chatId: '',
-  isSecured: false,
-  autoBackupOnOpen: false,
-  lastBackupDate: ''
-};
-
 export class AdminService {
   public getMasterSettings(): MasterControlSettings {
     const raw = localFileRepository.readJson<MasterControlSettings>(SETTINGS_FILE, defaultMasterSettings);
@@ -390,16 +381,6 @@ export class AdminService {
     return updated;
   }
 
-  public getTelegramConfig(): TelegramConfig {
-    return localFileRepository.readJson<TelegramConfig>(TG_FILE, defaultTelegramConfig);
-  }
-
-  public updateTelegramConfig(data: Partial<TelegramConfig>): TelegramConfig {
-    const current = this.getTelegramConfig();
-    const updated = { ...current, ...data };
-    localFileRepository.writeJson(TG_FILE, updated);
-    return updated;
-  }
 
   public verifyPassword(password: string, storedHashOrPlain?: string): boolean {
     if (!password) return false;

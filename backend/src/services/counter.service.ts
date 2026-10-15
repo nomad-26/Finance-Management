@@ -1,4 +1,4 @@
-import { telegramRepository } from '../telegram/telegram.repository.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 import { Loan } from '../types/index.js';
 
 interface CounterData {
@@ -14,7 +14,7 @@ const COUNTER_RECORD_ID = 'APP_COUNTERS';
 
 export class CounterService {
   private getCounters(): CounterData {
-    const envelope = telegramRepository.getRecordById<CounterData>('COUNTER', COUNTER_RECORD_ID, true);
+    const envelope = firestoreRepository.getRecordById<CounterData>('COUNTER', COUNTER_RECORD_ID, true);
     if (envelope && envelope.data) {
       return envelope.data;
     }
@@ -28,20 +28,20 @@ export class CounterService {
   }
 
   private async saveCounters(counters: CounterData): Promise<void> {
-    const existing = telegramRepository.getRecordById<CounterData>('COUNTER', COUNTER_RECORD_ID, true);
+    const existing = firestoreRepository.getRecordById<CounterData>('COUNTER', COUNTER_RECORD_ID, true);
     if (existing) {
-      await telegramRepository.updateRecord('COUNTER', COUNTER_RECORD_ID, counters);
+      await firestoreRepository.updateRecord('COUNTER', COUNTER_RECORD_ID, counters);
     } else {
-      await telegramRepository.createRecord('COUNTER', COUNTER_RECORD_ID, counters);
+      await firestoreRepository.createRecord('COUNTER', COUNTER_RECORD_ID, counters);
     }
   }
 
   /**
-   * Scans existing loans in Telegram storage to find the highest existing numeric sequence.
+   * Scans existing loans in Cloud Firestore storage to find the highest existing numeric sequence.
    */
   public getHighestExistingLoanNumber(): number {
     try {
-      const loans = telegramRepository.getRecords<Loan>('LOAN', { includeDeleted: false });
+      const loans = firestoreRepository.getRecords<Loan>('LOAN', { includeDeleted: false });
       let maxSeq = 0;
       if (Array.isArray(loans)) {
         for (const l of loans) {
@@ -64,7 +64,7 @@ export class CounterService {
    */
   public getHighestExistingCustomerNumber(): number {
     try {
-      const custs = telegramRepository.getRecords<any>('CUSTOMER', { includeDeleted: false });
+      const custs = firestoreRepository.getRecords<any>('CUSTOMER', { includeDeleted: false });
       let maxSeq = 0;
       for (const c of custs) {
         if (typeof c.numericId === 'number' && c.numericId > maxSeq) {
@@ -91,7 +91,7 @@ export class CounterService {
    */
   public getHighestExistingReceiptNumber(): number {
     try {
-      const receipts = telegramRepository.getRecords<any>('RECEIPT', { includeDeleted: false });
+      const receipts = firestoreRepository.getRecords<any>('RECEIPT', { includeDeleted: false });
       let maxSeq = 0;
       for (const r of receipts) {
         if (typeof r.receiptNo === 'number' && r.receiptNo > maxSeq) {
@@ -99,6 +99,48 @@ export class CounterService {
         }
         const rStr = String(r.receiptNo || r.id || '');
         const match = rStr.match(/(\d+)$/);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (num > maxSeq) maxSeq = num;
+        }
+      }
+      return maxSeq;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Scans existing Fixed Deposits to find highest FD receipt number
+   */
+  public getHighestExistingFdReceiptNumber(): number {
+    try {
+      const fds = firestoreRepository.getRecords<any>('FIXED_DEPOSIT', { includeDeleted: false });
+      let maxSeq = 0;
+      for (const fd of fds) {
+        const rStr = String(fd.receiptNumber || fd.receiptNo || '');
+        const match = rStr.match(/(\d+)$/);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (num > maxSeq) maxSeq = num;
+        }
+      }
+      return maxSeq;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Scans existing Fixed Deposit interest payouts to find highest voucher number
+   */
+  public getHighestExistingFdInterestVoucherNumber(): number {
+    try {
+      const payouts = firestoreRepository.getRecords<any>('FD_INTEREST_PAYOUT', { includeDeleted: false });
+      let maxSeq = 0;
+      for (const p of payouts) {
+        const vStr = String(p.voucherNumber || p.voucherNo || p.receiptNo || '');
+        const match = vStr.match(/(\d+)$/);
         if (match) {
           const num = parseInt(match[1], 10);
           if (num > maxSeq) maxSeq = num;
@@ -123,12 +165,20 @@ export class CounterService {
     } else if (name === 'receiptNo' || name === 'receipt') {
       const highest = this.getHighestExistingReceiptNumber();
       current = Math.max(current, highest);
+    } else if (name === 'fdReceiptNo' || name === 'fdReceipt') {
+      const highest = this.getHighestExistingFdReceiptNumber();
+      current = Math.max(current, highest);
+    } else if (name === 'fdInterestVoucherNo' || name === 'fdInterestVoucher' || name === 'intRcpt') {
+      const highest = this.getHighestExistingFdInterestVoucherNumber();
+      current = Math.max(current, highest);
     }
 
     const nextVal = current + 1;
     counters[name] = nextVal;
     if (name === 'receiptNo') counters.receipt = nextVal;
     if (name === 'customerId') counters.customer = nextVal;
+    if (name === 'fdReceiptNo') counters.fdReceipt = nextVal;
+    if (name === 'fdInterestVoucherNo') counters.fdInterestVoucher = nextVal;
 
     await this.saveCounters(counters);
     return nextVal;
@@ -175,6 +225,16 @@ export class CounterService {
   public async getNextFdNo(): Promise<string> {
     const seq = await this.getNextSequence('fdNo');
     return `FD-${String(seq).padStart(4, '0')}`;
+  }
+
+  public async getNextFdReceiptNo(): Promise<string> {
+    const seq = await this.getNextSequence('fdReceiptNo');
+    return `FD-RCPT-${String(seq).padStart(4, '0')}`;
+  }
+
+  public async getNextFdInterestVoucherNo(): Promise<string> {
+    const seq = await this.getNextSequence('fdInterestVoucherNo');
+    return `INT-RCPT-${String(seq).padStart(4, '0')}`;
   }
 
   public async setSequenceIfHigher(name: string, value: number): Promise<void> {

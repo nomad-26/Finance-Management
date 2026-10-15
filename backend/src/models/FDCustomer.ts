@@ -1,5 +1,5 @@
 import { FDCustomer } from '../types/index.js';
-import { telegramRepository } from '../telegram/telegram.repository.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 
 export interface IFDCustomerDocument extends Omit<FDCustomer, 'id'> {
   id: string;
@@ -8,7 +8,7 @@ export interface IFDCustomerDocument extends Omit<FDCustomer, 'id'> {
 export class FDCustomerModel {
   public static find(query: any = {}): any {
     const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
-    let records = telegramRepository.getRecords<FDCustomer>('FD_CUSTOMER', { includeDeleted });
+    let records = firestoreRepository.getRecords<FDCustomer>('FD_CUSTOMER', { includeDeleted });
 
     if (query.phone) {
       records = records.filter((c) => c.phone === query.phone);
@@ -28,7 +28,7 @@ export class FDCustomerModel {
 
   public static findOne(query: any = {}): any {
     const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
-    const records = telegramRepository.getRecords<FDCustomer>('FD_CUSTOMER', { includeDeleted });
+    const records = firestoreRepository.getRecords<FDCustomer>('FD_CUSTOMER', { includeDeleted });
 
     let match: FDCustomer | null = null;
     if (query.phone) {
@@ -49,11 +49,11 @@ export class FDCustomerModel {
 
   public static async countDocuments(query: any = {}): Promise<number> {
     const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
-    return telegramRepository.countRecords('FD_CUSTOMER', undefined, includeDeleted);
+    return firestoreRepository.countRecords('FD_CUSTOMER', undefined, includeDeleted);
   }
 
   public static async deleteMany(query: any = {}): Promise<{ deletedCount: number }> {
-    const { cleared } = await telegramRepository.resetApplicationData(['FD_CUSTOMER']);
+    const { cleared } = await firestoreRepository.resetApplicationData(['FD_CUSTOMER']);
     return { deletedCount: cleared };
   }
 
@@ -61,7 +61,7 @@ export class FDCustomerModel {
     const results = [];
     for (const d of docs) {
       const id = d.id || `FDC-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-      const res = await telegramRepository.createRecord('FD_CUSTOMER', id, d);
+      const res = await firestoreRepository.createRecord('FD_CUSTOMER', id, d);
       results.push(res.data);
     }
     return results;

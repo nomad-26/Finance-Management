@@ -1,58 +1,54 @@
 import { Request, Response } from 'express';
-import { telegramClient } from '../telegram/telegram.client.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
+import { firebaseConfig } from '../config/firebase.js';
 
 /**
  * Local Backend Process Health Check
- * Confirms the local HTTP server is running and responsive.
- * Does NOT block on or require external Telegram network connectivity.
+ * Primary Database: Cloud Firestore (Project: kkv-finance-4b3bf)
  */
 export const getHealth = (_req: Request, res: Response) => {
-  const telegramHealth = telegramClient.getCachedHealth();
-  const isConnected = telegramHealth.connected;
+  const isConnected = firestoreRepository.checkConnection();
 
   const responsePayload = {
     status: 'ok',
     service: 'kkv-gold-finance-backend',
     backend: 'running',
-    storage: 'telegram',
-    telegram: isConnected ? 'connected' : 'degraded',
+    storage: 'firestore',
+    firestore: isConnected ? 'connected' : 'degraded',
+    projectId: firebaseConfig.projectId,
     ready: true,
-    botUsername: telegramHealth.botUsername,
-    chatTitle: telegramHealth.chatTitle,
-    timestamp: new Date().toISOString(),
-    ...(telegramHealth.error ? { telegramNotice: telegramHealth.error } : {})
+    timestamp: new Date().toISOString()
   };
 
   return res.status(200).json(responsePayload);
 };
 
 /**
- * Detailed Telegram storage health status
+ * Detailed Cloud Firestore database health status
  */
-export const getTelegramHealth = async (req: Request, res: Response) => {
-  const force = req.query.check === 'true' || req.query.force === 'true';
-  const health = force ? await telegramClient.checkHealth(true) : telegramClient.getCachedHealth();
+export const getFirestoreHealth = async (_req: Request, res: Response) => {
+  const isConnected = firestoreRepository.checkConnection();
 
   return res.status(200).json({
-    service: 'telegram',
-    status: health.connected ? 'ready' : 'degraded',
-    connected: health.connected,
-    configured: health.configured,
-    botUsername: health.botUsername,
-    chatTitle: health.chatTitle,
-    lastCheckedAt: health.lastCheckedAt,
-    ...(health.error ? { error: health.error } : {})
+    service: 'firestore',
+    status: isConnected ? 'ready' : 'degraded',
+    connected: isConnected,
+    projectId: firebaseConfig.projectId,
+    storageBucket: firebaseConfig.storageBucket,
+    timestamp: new Date().toISOString()
   });
 };
+
 
 /**
  * Application Readiness Check
  */
 export const getReadiness = (_req: Request, res: Response) => {
-  const tgHealth = telegramClient.getCachedHealth();
+  const isConnected = firestoreRepository.checkConnection();
   return res.status(200).json({
     backend: 'ready',
-    telegram: tgHealth.connected ? 'ready' : 'degraded'
+    firestore: isConnected ? 'ready' : 'degraded',
+    projectId: firebaseConfig.projectId
   });
 };
 

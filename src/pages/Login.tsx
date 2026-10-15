@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { LoginView } from '../components/auth/LoginView';
+import { ConfigurationCenterModal } from '../components/config/ConfigurationCenterModal';
 
 export const Login: React.FC = () => {
   const {
@@ -13,6 +14,7 @@ export const Login: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [showConfigModal, setShowConfigModal] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,18 +34,28 @@ export const Login: React.FC = () => {
   };
 
   return (
-    <LoginView
-      loginEmail={loginEmail}
-      setLoginEmail={setLoginEmail}
-      loginPassword={loginPassword}
-      setLoginPassword={setLoginPassword}
-      showPassword={showPassword}
-      setShowPassword={setShowPassword}
-      loginError={loginError}
-      isLoggingIn={isLoggingIn}
-      authLoading={authLoading}
-      handleLogin={handleLogin}
-    />
+    <>
+      <LoginView
+        loginEmail={loginEmail}
+        setLoginEmail={setLoginEmail}
+        loginPassword={loginPassword}
+        setLoginPassword={setLoginPassword}
+        showPassword={showPassword}
+        setShowPassword={setShowPassword}
+        loginError={loginError}
+        isLoggingIn={isLoggingIn}
+        authLoading={authLoading}
+        handleLogin={handleLogin}
+        onOpenConfig={() => setShowConfigModal(true)}
+      />
+
+      {showConfigModal && (
+        <ConfigurationCenterModal
+          isOpen={showConfigModal}
+          onClose={() => setShowConfigModal(false)}
+        />
+      )}
+    </>
   );
 };
 

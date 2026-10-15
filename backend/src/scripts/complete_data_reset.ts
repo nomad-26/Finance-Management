@@ -1,8 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { env } from '../config/env.js';
-import { telegramRepository } from '../telegram/telegram.repository.js';
-import { telegramCache } from '../telegram/telegram.cache.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 import { counterService } from '../services/counter.service.js';
 import { localAuthService } from '../services/localAuth.service.js';
 import { localFileRepository } from '../repositories/localFile.repository.js';
@@ -26,7 +25,7 @@ export interface ResetSummaryReport {
   environment: string;
   countsBefore: Record<string, number>;
   countsAfter: Record<string, number>;
-  telegramRecordsDeleted: number;
+  firestoreRecordsDeleted: number;
   staffRemoved: number;
   countersReset: string[];
   masterAdminStatus: {
@@ -53,22 +52,22 @@ export async function executeCompleteDataReset(): Promise<ResetSummaryReport> {
 
   // 1. Initial State Snapshot
   const initialCounts = {
-    customers: telegramRepository.getRecords('CUSTOMER').length,
-    loans: telegramRepository.getRecords('LOAN').length,
-    receipts: telegramRepository.getRecords('RECEIPT').length,
-    fdCustomers: telegramRepository.getRecords('FD_CUSTOMER').length,
-    fixedDeposits: telegramRepository.getRecords('FIXED_DEPOSIT').length,
-    fdInterestPayouts: telegramRepository.getRecords('FD_INTEREST_PAYOUT').length,
-    fdWithdrawals: telegramRepository.getRecords('FD_WITHDRAWAL').length,
-    fdRenewals: telegramRepository.getRecords('FD_RENEWAL').length,
+    customers: firestoreRepository.getRecords('CUSTOMER').length,
+    loans: firestoreRepository.getRecords('LOAN').length,
+    receipts: firestoreRepository.getRecords('RECEIPT').length,
+    fdCustomers: firestoreRepository.getRecords('FD_CUSTOMER').length,
+    fixedDeposits: firestoreRepository.getRecords('FIXED_DEPOSIT').length,
+    fdInterestPayouts: firestoreRepository.getRecords('FD_INTEREST_PAYOUT').length,
+    fdWithdrawals: firestoreRepository.getRecords('FD_WITHDRAWAL').length,
+    fdRenewals: firestoreRepository.getRecords('FD_RENEWAL').length,
     rentalComplexes: rentalRepo.getComplexes().length,
     rentalShops: rentalRepo.getShops().length,
     rentalPayments: rentalRepo.getPayments().length,
     rentalExpenses: rentalRepo.getExpenses().length,
-    rentalDayBook: telegramRepository.getRecords('RENTAL_DAYBOOK').length,
-    fileAttachments: telegramRepository.getRecords('FILE_ATTACHMENT').length,
-    dayBookEntries: telegramRepository.getRecords('DAYBOOK').length,
-    auditLogs: telegramRepository.getRecords('AUDIT').length,
+    rentalDayBook: firestoreRepository.getRecords('RENTAL_DAYBOOK').length,
+    fileAttachments: firestoreRepository.getRecords('FILE_ATTACHMENT').length,
+    dayBookEntries: firestoreRepository.getRecords('DAYBOOK').length,
+    auditLogs: firestoreRepository.getRecords('AUDIT').length,
     nonAdminStaff: localAuthService.getAllUsers().filter((u) => u.email !== 'kkvgoldfinance13@gmail.com' && u.staffId !== 'KKV-ADMIN-000001').length
   };
 
@@ -77,15 +76,15 @@ export async function executeCompleteDataReset(): Promise<ResetSummaryReport> {
 
 
 
-  // 3. Telegram Storage Reset (Clear all business entity collections)
-  console.log('\n[RESET] 🚀 Step 2/6: Cleaning Telegram Persistence Database...');
-  let telegramRecordsDeleted = 0;
+  // 3. Cloud Firestore Storage Reset (Clear all business entity collections)
+  console.log('\n[RESET] 🚀 Step 2/6: Cleaning Cloud Firestore Persistence Database...');
+  let firestoreRecordsDeleted = 0;
   try {
-    const tgRes = await telegramRepository.resetApplicationData();
-    telegramRecordsDeleted = tgRes.cleared || 0;
-    console.log(`[RESET] ✓ Telegram DB: Cleared ${telegramRecordsDeleted} business envelopes across all operational collections.`);
+    const tgRes = await firestoreRepository.resetApplicationData();
+    firestoreRecordsDeleted = tgRes.cleared || 0;
+    console.log(`[RESET] ✓ Cloud Firestore DB: Cleared ${firestoreRecordsDeleted} records across all operational collections.`);
   } catch (tgErr: any) {
-    console.warn('[RESET] ⚠ Telegram DB clean notice:', tgErr?.message || tgErr);
+    console.warn('[RESET] ⚠ Cloud Firestore DB clean notice:', tgErr?.message || tgErr);
   }
 
   // 4. Memory & Local File Storage Clear
@@ -116,7 +115,7 @@ export async function executeCompleteDataReset(): Promise<ResetSummaryReport> {
 
   // Clear AppData entities directory if present
   if (process.env.APPDATA) {
-    const appDataEntities = path.join(process.env.APPDATA, 'kkv-gold-finance', 'data', 'telegram', 'entities');
+    const appDataEntities = path.join(process.env.APPDATA, 'kkv-gold-finance', 'data', 'firestore', 'entities');
     if (fs.existsSync(appDataEntities)) {
       const entityFiles = fs.readdirSync(appDataEntities);
       for (const ef of entityFiles) {
@@ -159,22 +158,22 @@ export async function executeCompleteDataReset(): Promise<ResetSummaryReport> {
   // 7. Post-Reset State Snapshot & Verification
   console.log('\n[RESET] 🚀 Step 6/6: Verifying Clean State...');
   const afterCounts = {
-    customers: telegramRepository.getRecords('CUSTOMER').length,
-    loans: telegramRepository.getRecords('LOAN').length,
-    receipts: telegramRepository.getRecords('RECEIPT').length,
-    fdCustomers: telegramRepository.getRecords('FD_CUSTOMER').length,
-    fixedDeposits: telegramRepository.getRecords('FIXED_DEPOSIT').length,
-    fdInterestPayouts: telegramRepository.getRecords('FD_INTEREST_PAYOUT').length,
-    fdWithdrawals: telegramRepository.getRecords('FD_WITHDRAWAL').length,
-    fdRenewals: telegramRepository.getRecords('FD_RENEWAL').length,
+    customers: firestoreRepository.getRecords('CUSTOMER').length,
+    loans: firestoreRepository.getRecords('LOAN').length,
+    receipts: firestoreRepository.getRecords('RECEIPT').length,
+    fdCustomers: firestoreRepository.getRecords('FD_CUSTOMER').length,
+    fixedDeposits: firestoreRepository.getRecords('FIXED_DEPOSIT').length,
+    fdInterestPayouts: firestoreRepository.getRecords('FD_INTEREST_PAYOUT').length,
+    fdWithdrawals: firestoreRepository.getRecords('FD_WITHDRAWAL').length,
+    fdRenewals: firestoreRepository.getRecords('FD_RENEWAL').length,
     rentalComplexes: rentalRepo.getComplexes().length,
     rentalShops: rentalRepo.getShops().length,
     rentalPayments: rentalRepo.getPayments().length,
     rentalExpenses: rentalRepo.getExpenses().length,
-    rentalDayBook: telegramRepository.getRecords('RENTAL_DAYBOOK').length,
-    fileAttachments: telegramRepository.getRecords('FILE_ATTACHMENT').length,
-    dayBookEntries: telegramRepository.getRecords('DAYBOOK').length,
-    auditLogs: telegramRepository.getRecords('AUDIT').length,
+    rentalDayBook: firestoreRepository.getRecords('RENTAL_DAYBOOK').length,
+    fileAttachments: firestoreRepository.getRecords('FILE_ATTACHMENT').length,
+    dayBookEntries: firestoreRepository.getRecords('DAYBOOK').length,
+    auditLogs: firestoreRepository.getRecords('AUDIT').length,
     nonAdminStaff: localAuthService.getAllUsers().filter((u) => u.email !== 'kkvgoldfinance13@gmail.com' && u.staffId !== 'KKV-ADMIN-000001').length
   };
 
@@ -201,7 +200,7 @@ export async function executeCompleteDataReset(): Promise<ResetSummaryReport> {
     environment: env.NODE_ENV,
     countsBefore: initialCounts,
     countsAfter: afterCounts,
-    telegramRecordsDeleted,
+    firestoreRecordsDeleted,
     staffRemoved,
     countersReset,
     masterAdminStatus: {
@@ -217,7 +216,7 @@ export async function executeCompleteDataReset(): Promise<ResetSummaryReport> {
       'Branch Configuration (KKV FINANCE - MAIN BRANCH / BR01)',
       'Master Settings & Financial Rate Tables',
       'Printer Settings & System Profiles',
-      'Telegram Bot API Integration & Persistence Layer',
+      'Cloud Firestore Database & Persistence Layer',
       'JWT Authentication & Environment Variables'
     ],
     firstRecordTest: {

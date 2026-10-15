@@ -264,52 +264,51 @@ export const IDProofInputFields: React.FC<IDProofInputFieldsProps> = ({
   const isOther = currentType.toLowerCase().includes('other');
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {/* 1. ID Proof Type Dropdown */}
-      <div className="form-group">
-        <label className="form-label required">ID Proof Type</label>
-        <select
-          className="select-control"
-          value={currentType}
-          disabled={disabled}
-          onChange={(e) => handleTypeChange(e.target.value)}
-        >
-          {ID_PROOF_OPTIONS.map((opt) => (
-            <option key={opt} value={opt}>
-              {opt}
-            </option>
-          ))}
-        </select>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      {/* CASE A: OTHER (Type Dropdown + Document Name + Document Number) */}
+      {isOther ? (
+        <div className="grid-3" style={{ gap: '14px 16px' }}>
+          <div className="kyc-form-group">
+            <label className="kyc-field-label required">ID PROOF TYPE</label>
+            <select
+              className="select-control"
+              style={{ height: '40px' }}
+              value={currentType}
+              disabled={disabled}
+              onChange={(e) => handleTypeChange(e.target.value)}
+            >
+              {ID_PROOF_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </div>
 
-      {/* 2. DYNAMIC INPUT FIELDS */}
-
-      {/* CASE A: OTHER (Document Name + Document Number) */}
-      {isOther && (
-        <div className="grid-2">
-          <div className="form-group">
-            <label className="form-label required">Document Name</label>
+          <div className="kyc-form-group">
+            <label className="kyc-field-label required">DOCUMENT NAME</label>
             <input
               type="text"
               className="input-control"
-              placeholder="e.g. Ration Card, Employee ID, College ID"
+              placeholder="e.g. Ration Card, Employee ID"
               value={docName}
               disabled={disabled}
               style={{
+                height: '40px',
                 borderColor: touchedDocName && currentValidation.nameError ? 'var(--color-danger, #ef4444)' : undefined
               }}
               onChange={(e) => handleDocNameChange(e.target.value)}
               onBlur={() => setTouchedDocName(true)}
             />
             {touchedDocName && currentValidation.nameError && (
-              <small style={{ color: 'var(--color-danger, #ef4444)', fontSize: '11px', marginTop: '4px', display: 'block', fontWeight: 600 }}>
+              <small style={{ color: 'var(--color-danger, #ef4444)', fontSize: '11px', marginTop: '3px', display: 'block', fontWeight: 600 }}>
                 {currentValidation.nameError}
               </small>
             )}
           </div>
 
-          <div className="form-group">
-            <label className="form-label required">Document Number / ID</label>
+          <div className="kyc-form-group">
+            <label className="kyc-field-label required">DOCUMENT NUMBER / ID</label>
             <input
               type="text"
               className="input-control"
@@ -317,47 +316,64 @@ export const IDProofInputFields: React.FC<IDProofInputFieldsProps> = ({
               value={idNumber}
               disabled={disabled}
               style={{
+                height: '40px',
                 borderColor: touchedMain && currentValidation.mainError ? 'var(--color-danger, #ef4444)' : undefined
               }}
               onChange={(e) => handleMainNumberChange(e.target.value)}
               onBlur={() => setTouchedMain(true)}
             />
             {touchedMain && currentValidation.mainError && (
-              <small style={{ color: 'var(--color-danger, #ef4444)', fontSize: '11px', marginTop: '4px', display: 'block', fontWeight: 600 }}>
+              <small style={{ color: 'var(--color-danger, #ef4444)', fontSize: '11px', marginTop: '3px', display: 'block', fontWeight: 600 }}>
                 {currentValidation.mainError}
               </small>
             )}
           </div>
         </div>
-      )}
+      ) : isAadhaarPan ? (
+        /* CASE B: AADHAAR + PAN (Type Dropdown + Aadhaar Number + PAN Number) */
+        <div className="grid-3" style={{ gap: '14px 16px' }}>
+          <div className="kyc-form-group">
+            <label className="kyc-field-label required">ID PROOF TYPE</label>
+            <select
+              className="select-control"
+              style={{ height: '40px' }}
+              value={currentType}
+              disabled={disabled}
+              onChange={(e) => handleTypeChange(e.target.value)}
+            >
+              {ID_PROOF_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </div>
 
-      {/* CASE B: AADHAAR + PAN (Two separate required fields) */}
-      {isAadhaarPan && (
-        <div className="grid-2">
-          <div className="form-group">
-            <label className="form-label required">Aadhaar Number</label>
+          <div className="kyc-form-group">
+            <label className="kyc-field-label required">AADHAAR NUMBER</label>
             <input
               type="text"
               className="input-control"
-              placeholder="Enter 12-digit Aadhaar number"
+              placeholder="12-digit Aadhaar number"
               maxLength={14}
               value={idNumber}
               disabled={disabled}
               style={{
+                height: '40px',
                 borderColor: touchedMain && currentValidation.mainError ? 'var(--color-danger, #ef4444)' : undefined
               }}
               onChange={(e) => handleMainNumberChange(e.target.value)}
               onBlur={() => setTouchedMain(true)}
             />
             {touchedMain && currentValidation.mainError && (
-              <small style={{ color: 'var(--color-danger, #ef4444)', fontSize: '11px', marginTop: '4px', display: 'block', fontWeight: 600 }}>
+              <small style={{ color: 'var(--color-danger, #ef4444)', fontSize: '11px', marginTop: '3px', display: 'block', fontWeight: 600 }}>
                 {currentValidation.mainError}
               </small>
             )}
           </div>
 
-          <div className="form-group">
-            <label className="form-label required">PAN Number</label>
+          <div className="kyc-form-group">
+            <label className="kyc-field-label required">PAN NUMBER</label>
             <input
               type="text"
               className="input-control"
@@ -366,66 +382,85 @@ export const IDProofInputFields: React.FC<IDProofInputFieldsProps> = ({
               value={extraPan}
               disabled={disabled}
               style={{
+                height: '40px',
                 borderColor: touchedPan && currentValidation.panError ? 'var(--color-danger, #ef4444)' : undefined
               }}
               onChange={(e) => handleExtraPanChange(e.target.value)}
               onBlur={() => setTouchedPan(true)}
             />
             {touchedPan && currentValidation.panError && (
-              <small style={{ color: 'var(--color-danger, #ef4444)', fontSize: '11px', marginTop: '4px', display: 'block', fontWeight: 600 }}>
+              <small style={{ color: 'var(--color-danger, #ef4444)', fontSize: '11px', marginTop: '3px', display: 'block', fontWeight: 600 }}>
                 {currentValidation.panError}
               </small>
             )}
           </div>
         </div>
-      )}
+      ) : (
+        /* CASE C: SINGLE FIELD (Type Dropdown + ID Number side-by-side in 2 cols) */
+        <div className="grid-2" style={{ gap: '14px 16px' }}>
+          <div className="kyc-form-group">
+            <label className="kyc-field-label required">ID PROOF TYPE</label>
+            <select
+              className="select-control"
+              style={{ height: '40px' }}
+              value={currentType}
+              disabled={disabled}
+              onChange={(e) => handleTypeChange(e.target.value)}
+            >
+              {ID_PROOF_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </div>
 
-      {/* CASE C: SINGLE FIELD (Aadhaar, PAN, Voter ID, Driving Licence, Passport) */}
-      {!isOther && !isAadhaarPan && (
-        <div className="form-group">
-          <label className="form-label required">
-            {currentType.toLowerCase().includes('aadhaar') && 'Aadhaar Number'}
-            {currentType.toLowerCase().includes('pan') && 'PAN Number'}
-            {currentType.toLowerCase().includes('voter') && 'Voter ID Number'}
-            {(currentType.toLowerCase().includes('driving') || currentType.toLowerCase().includes('licence') || currentType.toLowerCase().includes('license')) && 'Driving Licence Number'}
-            {currentType.toLowerCase().includes('passport') && 'Passport Number'}
-            {!currentType.toLowerCase().includes('aadhaar') &&
-             !currentType.toLowerCase().includes('pan') &&
-             !currentType.toLowerCase().includes('voter') &&
-             !currentType.toLowerCase().includes('driving') &&
-             !currentType.toLowerCase().includes('licence') &&
-             !currentType.toLowerCase().includes('passport') &&
-             'ID Proof Number'}
-          </label>
-          <input
-            type="text"
-            className="input-control"
-            placeholder={
-              currentType.toLowerCase().includes('aadhaar') ? 'Enter 12-digit Aadhaar number' :
-              currentType.toLowerCase().includes('pan') ? 'ABCDE1234F' :
-              currentType.toLowerCase().includes('voter') ? 'Enter Voter ID' :
-              (currentType.toLowerCase().includes('driving') || currentType.toLowerCase().includes('licence')) ? 'Enter Driving Licence Number' :
-              currentType.toLowerCase().includes('passport') ? 'Enter Passport Number' :
-              'Enter ID Proof Number'
-            }
-            maxLength={
-              currentType.toLowerCase().includes('aadhaar') ? 14 :
-              currentType.toLowerCase().includes('pan') ? 10 :
-              currentType.toLowerCase().includes('passport') ? 9 : 25
-            }
-            value={idNumber}
-            disabled={disabled}
-            style={{
-              borderColor: touchedMain && currentValidation.mainError ? 'var(--color-danger, #ef4444)' : undefined
-            }}
-            onChange={(e) => handleMainNumberChange(e.target.value)}
-            onBlur={() => setTouchedMain(true)}
-          />
-          {touchedMain && currentValidation.mainError && (
-            <small style={{ color: 'var(--color-danger, #ef4444)', fontSize: '11px', marginTop: '4px', display: 'block', fontWeight: 600 }}>
-              {currentValidation.mainError}
-            </small>
-          )}
+          <div className="kyc-form-group">
+            <label className="kyc-field-label required">
+              {currentType.toLowerCase().includes('aadhaar') && 'AADHAAR NUMBER'}
+              {currentType.toLowerCase().includes('pan') && 'PAN NUMBER'}
+              {currentType.toLowerCase().includes('voter') && 'VOTER ID NUMBER'}
+              {(currentType.toLowerCase().includes('driving') || currentType.toLowerCase().includes('licence') || currentType.toLowerCase().includes('license')) && 'DRIVING LICENCE NUMBER'}
+              {currentType.toLowerCase().includes('passport') && 'PASSPORT NUMBER'}
+              {!currentType.toLowerCase().includes('aadhaar') &&
+               !currentType.toLowerCase().includes('pan') &&
+               !currentType.toLowerCase().includes('voter') &&
+               !currentType.toLowerCase().includes('driving') &&
+               !currentType.toLowerCase().includes('licence') &&
+               !currentType.toLowerCase().includes('passport') &&
+               'ID PROOF NUMBER'}
+            </label>
+            <input
+              type="text"
+              className="input-control"
+              placeholder={
+                currentType.toLowerCase().includes('aadhaar') ? 'Enter 12-digit Aadhaar number' :
+                currentType.toLowerCase().includes('pan') ? 'ABCDE1234F' :
+                currentType.toLowerCase().includes('voter') ? 'Enter Voter ID' :
+                (currentType.toLowerCase().includes('driving') || currentType.toLowerCase().includes('licence')) ? 'Enter Driving Licence Number' :
+                currentType.toLowerCase().includes('passport') ? 'Enter Passport Number' :
+                'Enter ID Proof Number'
+              }
+              maxLength={
+                currentType.toLowerCase().includes('aadhaar') ? 14 :
+                currentType.toLowerCase().includes('pan') ? 10 :
+                currentType.toLowerCase().includes('passport') ? 9 : 25
+              }
+              value={idNumber}
+              disabled={disabled}
+              style={{
+                height: '40px',
+                borderColor: touchedMain && currentValidation.mainError ? 'var(--color-danger, #ef4444)' : undefined
+              }}
+              onChange={(e) => handleMainNumberChange(e.target.value)}
+              onBlur={() => setTouchedMain(true)}
+            />
+            {touchedMain && currentValidation.mainError && (
+              <small style={{ color: 'var(--color-danger, #ef4444)', fontSize: '11px', marginTop: '3px', display: 'block', fontWeight: 600 }}>
+                {currentValidation.mainError}
+              </small>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -7,7 +7,7 @@ import { rentalDayBookRepository } from '../modules/rental/repositories/rentalDa
 import { seedUsers } from './seedAdmin.js';
 import { backupPackageService } from '../services/backupPackage.service.js';
 import { env } from '../config/env.js';
-import { telegramRepository } from '../telegram/telegram.repository.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 import { localAuthService } from '../services/localAuth.service.js';
 
 export interface ResetReport {
@@ -35,9 +35,9 @@ export async function executeDevelopmentDataReset(): Promise<ResetReport> {
     throw new Error('Reset script cannot be run in production mode without explicit ALLOW_PRODUCTION_RESET flag.');
   }
 
-  console.log('[1/7] Initializing Telegram storage manager...');
-  await telegramRepository.initialize();
-  console.log(`✓ Telegram storage ready (Environment: ${env.NODE_ENV})`);
+  console.log('[1/7] Initializing Cloud Firestore storage manager...');
+  await firestoreRepository.initialize();
+  console.log(`✓ Cloud Firestore storage ready (Environment: ${env.NODE_ENV})`);
 
   // 2. Pre-Reset Safety Backup
   let backupRecord: any = null;
@@ -128,13 +128,13 @@ export async function executeDevelopmentDataReset(): Promise<ResetReport> {
     console.warn('Notice cleaning rental temp files:', tmpErr);
   }
 
-  // 5. Reset Telegram Storage Records
-  console.log('[5/7] Clearing Telegram persistent operational records...');
+  // 5. Reset Cloud Firestore Storage Records
+  console.log('[5/7] Clearing Cloud Firestore persistent operational records...');
   try {
-    await telegramRepository.resetApplicationData();
-    console.log('✓ Telegram application storage reset.');
+    await firestoreRepository.resetApplicationData();
+    console.log('✓ Cloud Firestore application storage reset.');
   } catch (mErr: any) {
-    console.warn('Notice resetting Telegram storage:', mErr?.message || mErr);
+    console.warn('Notice resetting Cloud Firestore storage:', mErr?.message || mErr);
   }
 
   // 6. Reset ID Sequences and Numbering Counters to 0
@@ -172,15 +172,15 @@ export async function executeDevelopmentDataReset(): Promise<ResetReport> {
   }));
 
   // Post-Reset Verification Check
-  const finalCusts = telegramRepository.getRecords('CUSTOMER').length;
-  const finalLoans = telegramRepository.getRecords('LOAN').length;
-  const finalRcpts = telegramRepository.getRecords('RECEIPT').length;
-  const finalFds = telegramRepository.getRecords('FIXED_DEPOSIT').length;
-  const finalComplexes = telegramRepository.getRecords('RENTAL_COMPLEX').length;
-  const finalShops = telegramRepository.getRecords('RENTAL_SHOP').length;
-  const finalPayments = telegramRepository.getRecords('RENTAL_PAYMENT').length;
-  const finalExpenses = telegramRepository.getRecords('RENTAL_EXPENSE').length;
-  const finalDayBook = telegramRepository.getRecords('RENTAL_DAYBOOK').length;
+  const finalCusts = firestoreRepository.getRecords('CUSTOMER').length;
+  const finalLoans = firestoreRepository.getRecords('LOAN').length;
+  const finalRcpts = firestoreRepository.getRecords('RECEIPT').length;
+  const finalFds = firestoreRepository.getRecords('FIXED_DEPOSIT').length;
+  const finalComplexes = firestoreRepository.getRecords('RENTAL_COMPLEX').length;
+  const finalShops = firestoreRepository.getRecords('RENTAL_SHOP').length;
+  const finalPayments = firestoreRepository.getRecords('RENTAL_PAYMENT').length;
+  const finalExpenses = firestoreRepository.getRecords('RENTAL_EXPENSE').length;
+  const finalDayBook = firestoreRepository.getRecords('RENTAL_DAYBOOK').length;
 
   const finalCounts: Record<string, number> = {
     customers: finalCusts,
@@ -205,7 +205,7 @@ export async function executeDevelopmentDataReset(): Promise<ResetReport> {
 
   return {
     environment: env.NODE_ENV,
-    storage: 'Telegram Remote Store',
+    storage: 'Cloud Firestore Remote Store',
     timestamp: new Date().toISOString(),
     backupId: backupRecord?.backupId,
     backupFileName: backupRecord?.fileName,
@@ -214,10 +214,9 @@ export async function executeDevelopmentDataReset(): Promise<ResetReport> {
     preservedAuthUsers: preservedUsersList,
     preservedConfigurations: [
       'settings.json (Master settings & interest rates)',
-      'telegram_settings.json (Telegram integration)',
       'whatsapp_templates.json (WhatsApp notification templates)',
       'User credentials, password hashes & RBAC permissions in localAuth store',
-      'Telegram Record Envelope schemas and indexes'
+      'Cloud Firestore Record Envelope schemas and indexes'
     ],
     finalCounts,
     zeroStateVerified

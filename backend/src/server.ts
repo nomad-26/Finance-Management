@@ -1,8 +1,6 @@
 import { env, validateStartupConfig } from './config/env.js';
 import { connectDB } from './config/database.js';
 import { localAuthService } from './services/localAuth.service.js';
-import { telegramClient } from './telegram/telegram.client.js';
-import { telegramSyncService } from './telegram/telegram.sync.js';
 import app from './app.js';
 
 async function startServer() {
@@ -37,10 +35,9 @@ async function startServer() {
     console.log('[BACKEND] READY');
     console.log('==================================================');
 
-    // 4. Asynchronously initialize Telegram background storage and sync
-    // This runs completely in background and NEVER blocks backend readiness or /health
+    // 4. Asynchronously initialize Cloud Firestore database and sync
     connectDB().catch((err) => {
-      console.warn('[Storage] Telegram background initialization notice:', err?.message || err);
+      console.warn('[Storage] Cloud Firestore background initialization notice:', err?.message || err);
     });
   });
 
@@ -56,8 +53,6 @@ async function startServer() {
   // Graceful shutdown handling
   const shutdown = () => {
     console.log('[BACKEND] Gracefully shutting down local backend...');
-    telegramClient.stopBackgroundHealthMonitor();
-    telegramSyncService.stopPeriodicSync();
     server.close(() => {
       console.log('[BACKEND] HTTP server closed cleanly.');
       process.exit(0);

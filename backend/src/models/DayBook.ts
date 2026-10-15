@@ -1,5 +1,5 @@
 import { DayBookEntry } from '../types/index.js';
-import { telegramRepository } from '../telegram/telegram.repository.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 
 export interface IDayBookDocument extends Omit<DayBookEntry, 'id'> {
   id: string;
@@ -8,7 +8,7 @@ export interface IDayBookDocument extends Omit<DayBookEntry, 'id'> {
 export class DayBookModel {
   public static find(query: any = {}): any {
     const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
-    let records = telegramRepository.getRecords<DayBookEntry>('DAYBOOK', { includeDeleted });
+    let records = firestoreRepository.getRecords<DayBookEntry>('DAYBOOK', { includeDeleted });
 
     if (query.date) {
       records = records.filter((r) => r.date === query.date);
@@ -28,11 +28,11 @@ export class DayBookModel {
 
   public static async countDocuments(query: any = {}): Promise<number> {
     const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
-    return telegramRepository.countRecords('DAYBOOK', undefined, includeDeleted);
+    return firestoreRepository.countRecords('DAYBOOK', undefined, includeDeleted);
   }
 
   public static async deleteMany(query: any = {}): Promise<{ deletedCount: number }> {
-    const { cleared } = await telegramRepository.resetApplicationData(['DAYBOOK']);
+    const { cleared } = await firestoreRepository.resetApplicationData(['DAYBOOK']);
     return { deletedCount: cleared };
   }
 
@@ -40,7 +40,7 @@ export class DayBookModel {
     const results = [];
     for (const d of docs) {
       const id = d.id || `DB-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-      const res = await telegramRepository.createRecord('DAYBOOK', id, d);
+      const res = await firestoreRepository.createRecord('DAYBOOK', id, d);
       results.push(res.data);
     }
     return results;

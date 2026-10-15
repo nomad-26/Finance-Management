@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { Customer, Loan } from '../../types';
-import { X, User, ShieldCheck, ExternalLink, Phone, Mail, Briefcase, Calendar, CheckCircle2, FileSpreadsheet, Users, AlertCircle, FileText, Image } from 'lucide-react';
+import { X, User, ShieldCheck, ExternalLink, Phone, Mail, Briefcase, Calendar, CheckCircle2, FileSpreadsheet, Users, AlertCircle, FileText, Image, Edit3, Trash2 } from 'lucide-react';
 import { formatIdProofDisplay } from '../../utils/kycValidation';
 import { buildGoogleMapsUrl } from '../../utils/addressUtils';
 import { useApp } from '../../context/AppContext';
 import { isMatchingCustomerId, getCanonicalCustomerId } from '../../utils/customerUtils';
 import { toDisplayDate } from './AgeDobInput';
 import { apiService } from '../../services/api';
+import { isAdminRole } from '../../config/permissions';
+import { EditLoanModal } from '../admin/EditLoanModal';
+import { DeleteLoanModal } from '../admin/DeleteLoanModal';
 
 export interface ViewCustomerModalProps {
   isOpen: boolean;
@@ -25,12 +28,15 @@ export const ViewCustomerModal: React.FC<ViewCustomerModalProps> = ({
   onClose,
   onEdit
 }) => {
-  const { loans, showToast } = useApp();
+  const { loans, showToast, userRole } = useApp();
+  const isAdmin = isAdminRole(userRole);
+  const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
+  const [deletingLoan, setDeletingLoan] = useState<Loan | null>(null);
   const [viewingDocId, setViewingDocId] = useState<string | null>(null);
 
   const handleViewKycDoc = async (doc: any) => {
     if (!doc) return;
-    const docId = doc.fileId || doc.publicId || doc.id || doc.telegramFileId || 'doc';
+    const docId = doc.fileId || doc.publicId || doc.id || doc.storagePath || 'doc';
     try {
       setViewingDocId(docId);
       const res = await apiService.viewProtectedDocument(doc);
@@ -785,6 +791,36 @@ export const ViewCustomerModal: React.FC<ViewCustomerModalProps> = ({
                         <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                           Outstanding: <strong style={{ color: outstanding > 0 ? 'var(--color-danger, #ef4444)' : 'var(--badge-success-text)' }}>₹{outstanding.toLocaleString('en-IN')}</strong> @ {loan.interestRate || loan.interestRateSnapshot || 1.5}%/mo
                         </div>
+                        {isAdmin && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', justifyContent: 'flex-end' }}>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              style={{ fontSize: '11px', padding: '2px 8px', gap: '4px', height: '26px' }}
+                              onClick={() => setEditingLoan(loan)}
+                              title="Admin Edit Loan"
+                            >
+                              <Edit3 size={12} />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              style={{
+                                fontSize: '11px',
+                                padding: '2px 8px',
+                                gap: '4px',
+                                height: '26px',
+                                color: 'var(--color-danger, #ef4444)'
+                              }}
+                              onClick={() => setDeletingLoan(loan)}
+                              title="Admin Delete Loan"
+                            >
+                              <Trash2 size={12} />
+                              <span>Delete</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -822,6 +858,24 @@ export const ViewCustomerModal: React.FC<ViewCustomerModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Admin Edit & Delete Loan Modals */}
+      {isAdmin && (
+        <>
+          <EditLoanModal
+            isOpen={!!editingLoan}
+            loan={editingLoan}
+            onClose={() => setEditingLoan(null)}
+            onSuccess={() => setEditingLoan(null)}
+          />
+          <DeleteLoanModal
+            isOpen={!!deletingLoan}
+            loan={deletingLoan}
+            onClose={() => setDeletingLoan(null)}
+            onSuccess={() => setDeletingLoan(null)}
+          />
+        </>
+      )}
     </div>
   );
 };

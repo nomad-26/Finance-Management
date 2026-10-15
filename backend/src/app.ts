@@ -3,7 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { env } from './config/env.js';
 import apiRouter from './routes/index.js';
-import { getHealth, getTelegramHealth, getReadiness } from './controllers/health.controller.js';
+import { getHealth, getFirestoreHealth, getReadiness } from './controllers/health.controller.js';
 
 const app = express();
 
@@ -97,10 +97,10 @@ app.get('/', (req: Request, res: Response) => {
 
 // Direct Health & Readiness Endpoints
 app.get('/health', getHealth);
-app.get('/health/telegram', getTelegramHealth);
+app.get('/health/firestore', getFirestoreHealth);
 app.get('/ready', getReadiness);
 app.get('/api/health', getHealth);
-app.get('/api/health/telegram', getTelegramHealth);
+app.get('/api/health/firestore', getFirestoreHealth);
 app.get('/api/ready', getReadiness);
 
 // Mount API routes at /api and root fallback

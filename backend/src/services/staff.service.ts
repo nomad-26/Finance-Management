@@ -689,7 +689,7 @@ class StaffService {
   public async retryDriveAccess(uid: string): Promise<{ success: boolean; message: string }> {
     return {
       success: true,
-      message: 'Telegram secure storage is active. External Google Drive folder provisioning is disabled.'
+      message: 'Cloud Firestore secure storage is active. External Google Drive folder provisioning is disabled.'
     };
   }
 

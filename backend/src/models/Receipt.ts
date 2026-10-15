@@ -1,5 +1,5 @@
 import { Receipt } from '../types/index.js';
-import { telegramRepository } from '../telegram/telegram.repository.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 
 export interface IReceiptDocument extends Omit<Receipt, 'id'> {
   id: string;
@@ -8,7 +8,7 @@ export interface IReceiptDocument extends Omit<Receipt, 'id'> {
 export class ReceiptModel {
   public static find(query: any = {}): any {
     const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
-    let records = telegramRepository.getRecords<Receipt>('RECEIPT', { includeDeleted });
+    let records = firestoreRepository.getRecords<Receipt>('RECEIPT', { includeDeleted });
 
     if (query.customerId) {
       records = records.filter((r) => r.customerId === query.customerId);
@@ -33,7 +33,7 @@ export class ReceiptModel {
   }
 
   public static findOne(query: any = {}): any {
-    const records = telegramRepository.getRecords<Receipt>('RECEIPT');
+    const records = firestoreRepository.getRecords<Receipt>('RECEIPT');
     let match: Receipt | null = null;
     if (query.id) {
       match = records.find((r) => r.id === query.id || `RCPT-${r.receiptNo}` === query.id) || null;
@@ -54,23 +54,23 @@ export class ReceiptModel {
     const id = doc.id || (doc.receiptNo ? `RCPT-${doc.receiptNo}` : query.id);
     if (!id) return null;
 
-    const existing = telegramRepository.getRecordById<Receipt>('RECEIPT', id, true);
+    const existing = firestoreRepository.getRecordById<Receipt>('RECEIPT', id, true);
     if (existing) {
-      const updated = await telegramRepository.updateRecord<Receipt>('RECEIPT', id, doc);
+      const updated = await firestoreRepository.updateRecord<Receipt>('RECEIPT', id, doc);
       return updated.data;
     } else {
-      const created = await telegramRepository.createRecord<Receipt>('RECEIPT', id, doc);
+      const created = await firestoreRepository.createRecord<Receipt>('RECEIPT', id, doc);
       return created.data;
     }
   }
 
   public static async countDocuments(query: any = {}): Promise<number> {
     const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
-    return telegramRepository.countRecords('RECEIPT', undefined, includeDeleted);
+    return firestoreRepository.countRecords('RECEIPT', undefined, includeDeleted);
   }
 
   public static async deleteMany(query: any = {}): Promise<{ deletedCount: number }> {
-    const { cleared } = await telegramRepository.resetApplicationData(['RECEIPT']);
+    const { cleared } = await firestoreRepository.resetApplicationData(['RECEIPT']);
     return { deletedCount: cleared };
   }
 
@@ -78,7 +78,7 @@ export class ReceiptModel {
     const results = [];
     for (const d of docs) {
       const id = d.id || `RCPT-${d.receiptNo}`;
-      const res = await telegramRepository.createRecord('RECEIPT', id, d);
+      const res = await firestoreRepository.createRecord('RECEIPT', id, d);
       results.push(res.data);
     }
     return results;

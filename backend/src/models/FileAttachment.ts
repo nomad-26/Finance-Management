@@ -1,4 +1,4 @@
-import { telegramRepository } from '../telegram/telegram.repository.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 
 export interface IFileAttachment {
   _id?: string;
@@ -12,9 +12,7 @@ export interface IFileAttachment {
   storedFileName: string;
   mimeType: string;
   fileSize: number;
-  telegramFileId: string;
-  telegramMessageId?: number;
-  telegramChatId?: string;
+  storagePath?: string;
   viewUrl?: string;
   downloadUrl?: string;
   uploadedBy?: string;
@@ -28,7 +26,7 @@ export interface IFileAttachment {
 export class FileAttachmentModel {
   public static find(query: any = {}): any {
     const isExplicitlyDeleted = query.isDeleted === true || (query.isDeleted && query.isDeleted.$ne !== true);
-    let records = telegramRepository.getRecords<IFileAttachment>('FILE_ATTACHMENT', { includeDeleted: isExplicitlyDeleted });
+    let records = firestoreRepository.getRecords<IFileAttachment>('FILE_ATTACHMENT', { includeDeleted: isExplicitlyDeleted });
 
     if (typeof query.isDeleted === 'boolean') {
       records = records.filter((f) => Boolean(f.isDeleted) === query.isDeleted);
@@ -38,7 +36,7 @@ export class FileAttachmentModel {
       records = records.filter((f) =>
         query.$or.some((clause: any) =>
           (clause.fileId && (f.fileId === clause.fileId || (f as any).id === clause.fileId)) ||
-          (clause.telegramFileId && f.telegramFileId === clause.telegramFileId) ||
+          (clause.storagePath && f.storagePath === clause.storagePath) ||
           (clause.id && ((f as any).id === clause.id || f.fileId === clause.id)) ||
           (clause.storedFileName && (f.storedFileName === clause.storedFileName || f.originalFileName === clause.storedFileName)) ||
           (clause.entityId && f.entityId === clause.entityId)
@@ -54,8 +52,8 @@ export class FileAttachmentModel {
       if (query.fileId) {
         records = records.filter((f) => f.fileId === query.fileId || (f as any).id === query.fileId);
       }
-      if (query.telegramFileId) {
-        records = records.filter((f) => f.telegramFileId === query.telegramFileId);
+      if (query.storagePath) {
+        records = records.filter((f) => f.storagePath === query.storagePath);
       }
       if (query.storedFileName) {
         records = records.filter((f) => f.storedFileName === query.storedFileName || f.originalFileName === query.storedFileName);
@@ -73,7 +71,7 @@ export class FileAttachmentModel {
 
   public static findOne(query: any = {}): any {
     const isExplicitlyDeleted = query.isDeleted === true || (query.isDeleted && query.isDeleted.$ne !== true);
-    let records = telegramRepository.getRecords<IFileAttachment>('FILE_ATTACHMENT', { includeDeleted: isExplicitlyDeleted });
+    let records = firestoreRepository.getRecords<IFileAttachment>('FILE_ATTACHMENT', { includeDeleted: isExplicitlyDeleted });
 
     if (typeof query.isDeleted === 'boolean') {
       records = records.filter((f) => Boolean(f.isDeleted) === query.isDeleted);
@@ -86,7 +84,7 @@ export class FileAttachmentModel {
         records.find((f) =>
           query.$or.some((clause: any) =>
             (clause.fileId && (f.fileId === clause.fileId || (f as any).id === clause.fileId)) ||
-            (clause.telegramFileId && f.telegramFileId === clause.telegramFileId) ||
+            (clause.storagePath && f.storagePath === clause.storagePath) ||
             (clause.id && ((f as any).id === clause.id || f.fileId === clause.id)) ||
             (clause.storedFileName && (f.storedFileName === clause.storedFileName || f.originalFileName === clause.storedFileName)) ||
             (clause.entityId && f.entityId === clause.entityId)
@@ -94,8 +92,8 @@ export class FileAttachmentModel {
         ) || null;
     } else if (query.fileId) {
       match = records.find((f) => f.fileId === query.fileId || (f as any).id === query.fileId) || null;
-    } else if (query.telegramFileId) {
-      match = records.find((f) => f.telegramFileId === query.telegramFileId) || null;
+    } else if (query.storagePath) {
+      match = records.find((f) => f.storagePath === query.storagePath) || null;
     } else if (query.id) {
       match = records.find((f) => (f as any).id === query.id || f.fileId === query.id) || null;
     } else if (query.storedFileName) {
@@ -112,7 +110,7 @@ export class FileAttachmentModel {
 
   public static async create(data: Partial<IFileAttachment>): Promise<IFileAttachment> {
     const id = data.fileId || `FILE-${Date.now()}`;
-    const existing = telegramRepository.getRecordById<IFileAttachment>('FILE_ATTACHMENT', id, true);
+    const existing = firestoreRepository.getRecordById<IFileAttachment>('FILE_ATTACHMENT', id, true);
     const doc: IFileAttachment = {
       fileId: id,
       entityType: data.entityType || 'customer',
@@ -123,9 +121,7 @@ export class FileAttachmentModel {
       storedFileName: data.storedFileName || 'file',
       mimeType: data.mimeType || 'application/octet-stream',
       fileSize: data.fileSize || 0,
-      telegramFileId: data.telegramFileId || '',
-      telegramMessageId: data.telegramMessageId,
-      telegramChatId: data.telegramChatId,
+      storagePath: data.storagePath || '',
       viewUrl: data.viewUrl || `/api/files/${id}/view`,
       downloadUrl: data.downloadUrl || `/api/files/${id}/download`,
       uploadedBy: data.uploadedBy,
@@ -135,9 +131,9 @@ export class FileAttachmentModel {
     };
 
     if (existing) {
-      await telegramRepository.updateRecord('FILE_ATTACHMENT', id, doc);
+      await firestoreRepository.updateRecord('FILE_ATTACHMENT', id, doc);
     } else {
-      await telegramRepository.createRecord('FILE_ATTACHMENT', id, doc);
+      await firestoreRepository.createRecord('FILE_ATTACHMENT', id, doc);
     }
     return doc;
   }
@@ -153,7 +149,7 @@ export class FileAttachmentModel {
 
   public static async countDocuments(query: any = {}): Promise<number> {
     const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
-    return telegramRepository.countRecords('FILE_ATTACHMENT', undefined, includeDeleted);
+    return firestoreRepository.countRecords('FILE_ATTACHMENT', undefined, includeDeleted);
   }
 
   public static async updateOne(query: any, update: any): Promise<any> {
@@ -161,27 +157,27 @@ export class FileAttachmentModel {
     if (!item) return { matchedCount: 0, modifiedCount: 0 };
     const fileId = item.fileId || item.id;
     const updateData = update.$set ? update.$set : update;
-    await telegramRepository.updateRecord('FILE_ATTACHMENT', fileId, updateData);
+    await firestoreRepository.updateRecord('FILE_ATTACHMENT', fileId, updateData);
     return { matchedCount: 1, modifiedCount: 1 };
   }
 
   public static async deleteOne(query: any): Promise<any> {
     const id = query.fileId || query.id;
     if (id) {
-      await telegramRepository.deleteRecord('FILE_ATTACHMENT', id);
+      await firestoreRepository.deleteRecord('FILE_ATTACHMENT', id);
       return { deletedCount: 1 };
     }
     return { deletedCount: 0 };
   }
 
   public static async deleteMany(query: any = {}): Promise<any> {
-    let records = telegramRepository.getRecords<IFileAttachment>('FILE_ATTACHMENT', { includeDeleted: true });
+    let records = firestoreRepository.getRecords<IFileAttachment>('FILE_ATTACHMENT', { includeDeleted: true });
     if (query.entityId) {
       records = records.filter((f) => f.entityId === query.entityId);
     }
     let count = 0;
     for (const r of records) {
-      await telegramRepository.deleteRecord('FILE_ATTACHMENT', r.fileId);
+      await firestoreRepository.deleteRecord('FILE_ATTACHMENT', r.fileId);
       count++;
     }
     return { deletedCount: count };

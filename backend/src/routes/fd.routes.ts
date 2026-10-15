@@ -13,7 +13,9 @@ import {
   getFDRenewals,
   bulkUpdateFDDates,
   getFDConfiguration,
-  updateFDConfiguration
+  updateFDConfiguration,
+  getFDReceiptPdf,
+  getFDInterestReceiptPdf
 } from '../controllers/fd.controller.js';
 import { authenticateUser, authorizePermission, authorizeRoles } from '../middleware/auth.middleware.js';
 
@@ -29,7 +31,15 @@ router.get('/customers', authorizePermission('fd', 'view'), getFDCustomers);
 router.post('/customers', authorizePermission('fd', 'create'), createFDCustomer);
 router.get('/deposits', authorizePermission('fd', 'view'), getFixedDeposits);
 router.post('/deposits', authorizePermission('fd', 'create'), createFixedDeposit);
+router.get('/deposits/:fdNo/receipt/pdf', authorizePermission('fd', 'view'), getFDReceiptPdf);
+router.get('/:fdNo/receipt/pdf', authorizePermission('fd', 'view'), getFDReceiptPdf);
 router.post('/deposits/:fdNo/payout', authorizePermission('fd', 'update'), payFDInterest);
+router.post('/interest/pay', authorizePermission('fd', 'update'), (req, res) => {
+  if (req.body.fdNo) req.params.fdNo = req.body.fdNo;
+  return payFDInterest(req, res);
+});
+router.get('/interest/:voucherNumber/receipt/pdf', authorizePermission('fd', 'view'), getFDInterestReceiptPdf);
+router.get('/payouts/:payoutId/receipt/pdf', authorizePermission('fd', 'view'), getFDInterestReceiptPdf);
 router.post('/deposits/:fdNo/withdraw', authorizePermission('fd', 'update'), withdrawFD);
 router.post('/deposits/:fdNo/renew', authorizePermission('fd', 'update'), renewFD);
 router.delete('/deposits/:fdNo', authorizePermission('fd', 'delete'), deleteFixedDeposit);

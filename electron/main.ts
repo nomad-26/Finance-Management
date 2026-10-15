@@ -58,9 +58,9 @@ function createWindow(): void {
     height: 900,
     minWidth: 1100,
     minHeight: 700,
-    title: 'KKV Gold Finance & Rental Management',
+    title: 'KKV Gold Finance',
     icon: appIcon,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#062F25',
     show: false, // Show once ready to prevent white flash
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -241,6 +241,49 @@ ipcMain.on('desktop:close-window', () => {
 
 ipcMain.handle('desktop:is-maximized', () => {
   return mainWindow?.isMaximized() || false;
+});
+
+ipcMain.handle('desktop:open-logs-folder', async () => {
+  const logsDir = path.join(app.getPath('userData'), 'logs');
+  if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir, { recursive: true });
+  }
+  return shell.openPath(logsDir);
+});
+
+ipcMain.handle('desktop:save-backup-dialog', async (_event, defaultName?: string) => {
+  if (!mainWindow) return null;
+  const documentsDir = app.getPath('documents');
+  const backupsDir = path.join(documentsDir, 'KKV Gold Finance', 'Backups');
+  if (!fs.existsSync(backupsDir)) {
+    fs.mkdirSync(backupsDir, { recursive: true });
+  }
+
+  const d = new Date();
+  const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}_${String(d.getHours()).padStart(2, '0')}-${String(d.getMinutes()).padStart(2, '0')}-${String(d.getSeconds()).padStart(2, '0')}`;
+  const filename = defaultName || `KKV_Gold_Finance_Backup_${dateStr}.zip`;
+
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Save Database Backup Archive',
+    defaultPath: path.join(backupsDir, filename),
+    filters: [{ name: 'ZIP Archives (*.zip)', extensions: ['zip'] }, { name: 'All Files (*.*)', extensions: ['*'] }]
+  });
+
+  if (result.canceled || !result.filePath) return null;
+  return result.filePath;
+});
+
+ipcMain.handle('desktop:get-runtime-paths', () => {
+  const userData = app.getPath('userData');
+  return {
+    userData,
+    appData: app.getPath('appData'),
+    documents: app.getPath('documents'),
+    downloads: app.getPath('downloads'),
+    logs: path.join(userData, 'logs'),
+    backups: path.join(userData, 'backups'),
+    data: path.join(userData, 'data')
+  };
 });
 
 // ── Application Lifecycle ───────────────────────────────────────────────────

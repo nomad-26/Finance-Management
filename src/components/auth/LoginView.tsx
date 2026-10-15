@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ShieldAlert,
   Mail,
@@ -11,6 +11,7 @@ import {
   CheckCircle
 } from 'lucide-react';
 import { KKVLogo } from '../common/KKVLogo';
+import { ConfigurationCenterModal } from '../config/ConfigurationCenterModal';
 import './LoginView.css';
 
 interface LoginViewProps {
@@ -24,6 +25,7 @@ interface LoginViewProps {
   isLoggingIn: boolean;
   authLoading: boolean;
   handleLogin: (e: React.FormEvent) => void;
+  onOpenConfig?: () => void;
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({
@@ -36,8 +38,19 @@ export const LoginView: React.FC<LoginViewProps> = ({
   loginError,
   isLoggingIn,
   authLoading,
-  handleLogin
+  handleLogin,
+  onOpenConfig
 }) => {
+  const [internalConfigOpen, setInternalConfigOpen] = useState(false);
+
+  const handleConfigClick = () => {
+    if (onOpenConfig) {
+      onOpenConfig();
+    } else {
+      setInternalConfigOpen(true);
+    }
+  };
+
   return (
     <div className="kkv-login-wrapper">
       {/* LEFT SIDE — BRAND EXPERIENCE */}
@@ -205,8 +218,29 @@ export const LoginView: React.FC<LoginViewProps> = ({
             <Lock size={13} />
             <span>Authorized access only. All activities are securely logged.</span>
           </div>
+
+          {/* Config Option — Bottom-right below security message */}
+          <div className="kkv-login-config-bar">
+            <button
+              type="button"
+              className="kkv-login-config-btn"
+              onClick={handleConfigClick}
+              title="System Storage & Data Safety"
+              id="btn-login-config"
+            >
+              <span className="kkv-config-gear">⚙</span>
+              <span>Storage</span>
+            </button>
+          </div>
         </div>
       </div>
+
+      {internalConfigOpen && (
+        <ConfigurationCenterModal
+          isOpen={internalConfigOpen}
+          onClose={() => setInternalConfigOpen(false)}
+        />
+      )}
     </div>
   );
 };

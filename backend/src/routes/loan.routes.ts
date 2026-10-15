@@ -26,12 +26,14 @@ router.get('/', authorizePermission('loans', 'view'), getLoans);
 router.get('/customer/:customerId', authorizePermission('loans', 'view'), getLoansByCustomerId);
 router.get('/:loanNo', authorizePermission('loans', 'view'), getLoanByNo);
 router.post('/', authorizePermission('loans', 'create'), createLoan);
-router.put('/:id', authorizePermission('loans', 'update'), updateLoan);
+// Admin-Only Mutation Endpoints
+router.put('/:id', authorizeRoles('ADMIN'), updateLoan);
+
 router.post('/:loanNo/close', authorizePermission('loans', 'approve'), closeLoan);
 router.get('/:id/payments', authorizePermission('loans', 'view'), getLoanPayments);
 router.post('/:id/payments', authorizePermission('loans', 'create'), addLoanPayment);
 
-// Destructive Endpoints
-router.delete('/:id', authorizePermission('loans', 'delete'), deleteLoan);
+// Destructive Endpoints (Admin-Only)
+router.delete('/:id', authorizeRoles('ADMIN'), deleteLoan);
 
 export default router;

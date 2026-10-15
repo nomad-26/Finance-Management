@@ -1,4 +1,4 @@
-import { telegramRepository } from '../telegram/telegram.repository.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 
 export interface IStaffAudit {
   _id?: string;
@@ -37,7 +37,7 @@ export class StaffAuditModel {
       createdAt: data.createdAt || new Date().toISOString()
     };
 
-    await telegramRepository.createRecord('AUDIT', id, auditRecord, {
+    await firestoreRepository.createRecord('AUDIT', id, auditRecord, {
       uid: auditRecord.performedBy,
       email: auditRecord.actorEmail
     });
@@ -46,7 +46,7 @@ export class StaffAuditModel {
   }
 
   public static find(_query: any = {}): any {
-    const records = telegramRepository.getRecords<IStaffAudit>('AUDIT');
+    const records = firestoreRepository.getRecords<IStaffAudit>('AUDIT');
     const sorted = [...records].sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
@@ -65,7 +65,7 @@ export class StaffAuditModel {
   }
 
   public static async deleteMany(_query: any = {}): Promise<{ deletedCount: number }> {
-    const { cleared } = await telegramRepository.resetApplicationData(['AUDIT']);
+    const { cleared } = await firestoreRepository.resetApplicationData(['AUDIT']);
     return { deletedCount: cleared };
   }
 }

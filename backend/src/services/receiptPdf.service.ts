@@ -1,7 +1,7 @@
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
-import { Receipt, Loan, Customer, BranchSettings } from '../types/index.js';
+import { Receipt, Loan, Customer, BranchSettings, FixedDeposit, FDCustomer, FDInterestPayout } from '../types/index.js';
 import { COMPANY_CONFIG, DEFAULT_BRANCH_SETTINGS } from '../config/company.config.js';
 import { adminService } from './admin.service.js';
 
@@ -9,6 +9,19 @@ export interface ReceiptPdfOptions {
   receipt: Receipt;
   loan?: Loan | null;
   customer?: Customer | null;
+  branchSettings?: BranchSettings | null;
+}
+
+export interface FDReceiptPdfOptions {
+  fd: FixedDeposit;
+  customer?: Customer | FDCustomer | any | null;
+  branchSettings?: BranchSettings | null;
+}
+
+export interface FDInterestReceiptPdfOptions {
+  payout: FDInterestPayout;
+  fd?: FixedDeposit | null;
+  customer?: Customer | FDCustomer | any | null;
   branchSettings?: BranchSettings | null;
 }
 
@@ -732,6 +745,1070 @@ export class ReceiptPdfService {
           `This is a computer-generated official financial voucher issued by ${businessTitle}. No signature revision required.`,
           leftMargin,
           footerY + 6,
+          { width: contentWidth, align: 'center' }
+        );
+
+      doc.end();
+    });
+  }
+
+  /**
+   * Generates a sanitized professional filename for the FD receipt PDF voucher
+   */
+  public generateFDFilename(fd: FixedDeposit): string {
+    const fdNo = fd.fdNo || 'FD';
+    const rcptNo = fd.receiptNumber || 'RCPT';
+    const rawCustomer = fd.depositorName || 'CUSTOMER';
+    const sanitizedCustomer = rawCustomer
+      .replace(/[^a-zA-Z0-9_-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .toUpperCase();
+
+    return `KKV-FD-Receipt-${rcptNo}-${fdNo}-${sanitizedCustomer}.pdf`;
+  }
+
+  /**
+   * Generates an official A4 Fixed Deposit Receipt / Certificate PDF buffer
+   */
+  public async generateFDReceiptPdfBuffer(options: FDReceiptPdfOptions): Promise<Buffer> {
+    return new Promise<Buffer>((resolve, reject) => {
+      const { fd, customer } = options;
+      const chunks: Buffer[] = [];
+
+      // Resolve Dynamic Central Branch Settings
+      const branchSettings: BranchSettings = {
+        ...DEFAULT_BRANCH_SETTINGS,
+        ...(adminService.getMasterSettings()?.branchSettings || {}),
+        ...(options.branchSettings || {})
+      };
+
+      const businessTitle = branchSettings.businessTitle || COMPANY_CONFIG.businessName;
+      const branchAddress = branchSettings.branchAddress || COMPANY_CONFIG.address;
+      const officialPhone = branchSettings.officialPhone || COMPANY_CONFIG.phone;
+      const gstin = branchSettings.gstin;
+
+      // A4 page setup (595.28 x 841.89 points) with 36pt margins
+      const doc = new PDFDocument({
+        size: 'A4',
+        margin: 36,
+        info: {
+          Title: `${businessTitle} - Fixed Deposit Receipt ${fd.receiptNumber || fd.fdNo}`,
+          Author: `${businessTitle} & Term Deposit Management`,
+          Subject: `Official Fixed Deposit Receipt Certificate for ${fd.fdNo}`,
+          Keywords: 'KKV Finance, Fixed Deposit, Receipt, Certificate, Term Deposit',
+          CreationDate: new Date()
+        }
+      });
+
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', (err) => reject(err));
+
+      const pageWidth = 595.28;
+      const leftMargin = 36;
+      const rightMargin = pageWidth - 36;
+      const contentWidth = rightMargin - leftMargin; // 523.28 pt
+
+      // ── COLOR PALETTE ────────────────────────────────────────────────────────
+      const colorEmerald = '#064e3b';
+      const colorGold = '#b45309';
+      const colorDark = '#0f172a';
+      const colorMuted = '#64748b';
+      const colorLightBg = '#f8fafc';
+      const colorBorder = '#cbd5e1';
+      const colorSuccessBg = '#ecfdf5';
+      const colorSuccessText = '#047857';
+
+      let currentY = 36;
+
+      // ── 1. HEADER SECTION ───────────────────────────────────────────────────
+      const logoPath = this.findLogoPath();
+      if (logoPath) {
+        try {
+          doc.image(logoPath, leftMargin, currentY, { width: 44, height: 44 });
+        } catch {
+          doc.rect(leftMargin, currentY, 44, 44).fillAndStroke(colorEmerald, colorGold);
+        }
+      }
+
+      // Company Title & Info
+      const headerTextX = logoPath ? leftMargin + 52 : leftMargin;
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(15)
+        .fillColor(colorEmerald)
+        .text(businessTitle, headerTextX, currentY);
+
+      // Uppercase Address
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(7.5)
+        .fillColor(colorDark)
+        .text(branchAddress.toUpperCase(), headerTextX, currentY + 18, {
+          width: contentWidth - (logoPath ? 52 : 0) - 140
+        });
+
+      // Phone Box
+      const phoneBoxX = headerTextX;
+      const phoneBoxY = currentY + 31;
+      const phoneBoxWidth = 84;
+      const phoneBoxHeight = 12;
+
+      doc
+        .roundedRect(phoneBoxX, phoneBoxY, phoneBoxWidth, phoneBoxHeight, 2.5)
+        .fill('#dc2626');
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(7)
+        .fillColor('#ffffff')
+        .text(`Ph: ${officialPhone}`, phoneBoxX, phoneBoxY + 2.5, {
+          width: phoneBoxWidth,
+          align: 'center'
+        });
+
+      // Optional GSTIN Tag
+      if (gstin && gstin.trim()) {
+        const gstinBoxX = phoneBoxX + phoneBoxWidth + 6;
+        const gstinBoxWidth = 95;
+        doc
+          .roundedRect(gstinBoxX, phoneBoxY, gstinBoxWidth, phoneBoxHeight, 2.5)
+          .fill(colorEmerald);
+
+        doc
+          .font('Helvetica-Bold')
+          .fontSize(6.5)
+          .fillColor('#ffffff')
+          .text(`GST: ${gstin}`, gstinBoxX, phoneBoxY + 2.5, {
+            width: gstinBoxWidth,
+            align: 'center'
+          });
+      }
+
+      // Right-aligned Document Meta Badge
+      const metaBoxWidth = 150;
+      const metaBoxX = rightMargin - metaBoxWidth;
+
+      doc
+        .roundedRect(metaBoxX, currentY, metaBoxWidth, 20, 3)
+        .fill(colorEmerald);
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(9)
+        .fillColor('#ffffff')
+        .text('FIXED DEPOSIT RECEIPT', metaBoxX, currentY + 5.5, {
+          width: metaBoxWidth,
+          align: 'center'
+        });
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(10)
+        .fillColor(colorEmerald)
+        .text(`RECEIPT #${fd.receiptNumber || 'FD-RCPT-001'}`, metaBoxX, currentY + 26, {
+          width: metaBoxWidth,
+          align: 'right'
+        });
+
+      currentY += 52;
+
+      // Decorative Divider Line
+      doc
+        .strokeColor(colorEmerald)
+        .lineWidth(1.5)
+        .moveTo(leftMargin, currentY)
+        .lineTo(rightMargin, currentY)
+        .stroke();
+
+      currentY += 10;
+
+      // ── 2. METADATA SUMMARY BAR ──────────────────────────────────────────────
+      const metaBarHeight = 32;
+      doc
+        .roundedRect(leftMargin, currentY, contentWidth, metaBarHeight, 4)
+        .fillAndStroke(colorLightBg, colorBorder);
+
+      const colW = contentWidth / 2;
+      const receiptDate = fd.receiptGeneratedAt
+        ? new Date(fd.receiptGeneratedAt).toLocaleDateString('en-GB').replace(/\//g, '-')
+        : fd.depositDate;
+
+      // Left Box: FD No & Receipt No
+      const leftBoxX = leftMargin + 10;
+      doc
+        .font('Helvetica')
+        .fontSize(6.5)
+        .fillColor(colorMuted)
+        .text('FD NUMBER', leftBoxX, currentY + 5)
+        .font('Helvetica-Bold')
+        .fontSize(8.5)
+        .fillColor(colorEmerald)
+        .text(fd.fdNo, leftBoxX, currentY + 16);
+
+      const leftBox2X = leftMargin + 110;
+      doc
+        .font('Helvetica')
+        .fontSize(6.5)
+        .fillColor(colorMuted)
+        .text('RECEIPT NUMBER', leftBox2X, currentY + 5)
+        .font('Helvetica-Bold')
+        .fontSize(9.5)
+        .fillColor(colorEmerald)
+        .text(fd.receiptNumber || 'FD-RCPT-001', leftBox2X, currentY + 16);
+
+      // Right Box: Deposit Date, Receipt Date, Maturity Date
+      const rightColW = (colW - 20) / 3;
+      const r1X = leftMargin + colW + 10;
+      const r2X = r1X + rightColW;
+      const r3X = r2X + rightColW;
+
+      doc
+        .font('Helvetica')
+        .fontSize(6.5)
+        .fillColor(colorMuted)
+        .text('DEPOSIT DATE', r1X, currentY + 5)
+        .font('Helvetica-Bold')
+        .fontSize(8.5)
+        .fillColor(colorDark)
+        .text(fd.depositDate, r1X, currentY + 16);
+
+      doc
+        .font('Helvetica')
+        .fontSize(6.5)
+        .fillColor(colorMuted)
+        .text('RECEIPT DATE', r2X, currentY + 5)
+        .font('Helvetica-Bold')
+        .fontSize(8.5)
+        .fillColor(colorDark)
+        .text(receiptDate, r2X, currentY + 16);
+
+      doc
+        .font('Helvetica')
+        .fontSize(6.5)
+        .fillColor(colorMuted)
+        .text('MATURITY DATE', r3X, currentY + 5)
+        .font('Helvetica-Bold')
+        .fontSize(8.5)
+        .fillColor(colorSuccessText)
+        .text(fd.maturityDate, r3X, currentY + 16);
+
+      currentY += metaBarHeight + 12;
+
+      // ── 3. CUSTOMER DETAILS CARD ────────────────────────────────────────────
+      const custCardHeight = 62;
+      doc
+        .roundedRect(leftMargin, currentY, contentWidth, custCardHeight, 4)
+        .fillAndStroke('#ffffff', colorBorder);
+
+      // Card Header Tag
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(8)
+        .fillColor(colorEmerald)
+        .text('CUSTOMER INFORMATION', leftMargin + 10, currentY + 8);
+
+      const custName = customer?.name || fd.depositorName;
+      const custId = customer?.id || fd.customerId;
+      const custPhone = customer?.phone || fd.phone;
+      const custAddr = customer?.currentAddress || fd.address || 'Address on record';
+      const nomineeStr = fd.nomineeName
+        ? `${fd.nomineeName}${fd.nomineeRelation ? ` (${fd.nomineeRelation})` : ''}`
+        : 'Not Specified';
+
+      const custRow1Y = currentY + 22;
+      const custRow2Y = currentY + 40;
+
+      // Row 1: Name, ID, Mobile
+      doc
+        .font('Helvetica')
+        .fontSize(7)
+        .fillColor(colorMuted)
+        .text('Customer Name:', leftMargin + 10, custRow1Y)
+        .font('Helvetica-Bold')
+        .fontSize(8.5)
+        .fillColor(colorDark)
+        .text(custName, leftMargin + 76, custRow1Y);
+
+      doc
+        .font('Helvetica')
+        .fontSize(7)
+        .fillColor(colorMuted)
+        .text('Customer ID:', leftMargin + 240, custRow1Y)
+        .font('Helvetica-Bold')
+        .fontSize(8.5)
+        .fillColor(colorEmerald)
+        .text(custId, leftMargin + 295, custRow1Y);
+
+      doc
+        .font('Helvetica')
+        .fontSize(7)
+        .fillColor(colorMuted)
+        .text('Mobile Number:', leftMargin + 380, custRow1Y)
+        .font('Helvetica-Bold')
+        .fontSize(8.5)
+        .fillColor(colorDark)
+        .text(`+91 ${custPhone}`, leftMargin + 442, custRow1Y);
+
+      // Row 2: Address, Nominee
+      doc
+        .font('Helvetica')
+        .fontSize(7)
+        .fillColor(colorMuted)
+        .text('Address:', leftMargin + 10, custRow2Y)
+        .font('Helvetica')
+        .fontSize(7.5)
+        .fillColor(colorDark)
+        .text(custAddr, leftMargin + 50, custRow2Y, { width: 230, height: 16, ellipsis: true });
+
+      doc
+        .font('Helvetica')
+        .fontSize(7)
+        .fillColor(colorMuted)
+        .text('Nominee:', leftMargin + 300, custRow2Y)
+        .font('Helvetica-Bold')
+        .fontSize(7.5)
+        .fillColor(colorDark)
+        .text(nomineeStr, leftMargin + 345, custRow2Y, { width: 170, height: 16, ellipsis: true });
+
+      currentY += custCardHeight + 12;
+
+      // ── 4. FIXED DEPOSIT TERMS & FINANCIAL BREAKDOWN ────────────────────────
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(8.5)
+        .fillColor(colorEmerald)
+        .text('DEPOSIT CONTRACT DETAILS', leftMargin, currentY);
+
+      currentY += 12;
+
+      // Table Header
+      const thHeight = 18;
+      doc
+        .roundedRect(leftMargin, currentY, contentWidth, thHeight, 2)
+        .fill(colorEmerald);
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(7.5)
+        .fillColor('#ffffff')
+        .text('PARAMETER', leftMargin + 10, currentY + 5, { width: 250 })
+        .text('DETAILS', leftMargin + 270, currentY + 5, { width: 240, align: 'right' });
+
+      currentY += thHeight;
+
+      const tenure = fd.tenureMonths || 12;
+      const totalExpectedInterest = (fd.monthlyPayout || 0) * tenure;
+      const expectedMaturity = fd.principal + totalExpectedInterest;
+
+      const depositRows = [
+        { label: 'Deposit Principal Amount (Original Investment)', val: `Rs. ${fd.principal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, bold: true, highlight: true },
+        { label: 'Annual Interest Rate (% Per Annum)', val: `${Number(fd.interestRatePA).toFixed(2)}% p.a.`, bold: true },
+        { label: 'Deposit Tenure', val: `${tenure} Months`, bold: false },
+        { label: 'Interest Payout Frequency', val: 'Monthly', bold: false },
+        { label: 'Monthly Interest Payout', val: `Rs. ${(fd.monthlyPayout || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / month`, bold: true, color: colorSuccessText },
+        { label: 'Expected Total Interest', val: `Rs. ${totalExpectedInterest.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, bold: false },
+        { label: 'Expected Maturity Value', val: `Rs. ${expectedMaturity.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, bold: true, color: colorEmerald },
+        { label: 'Deposit / Receiving Mode', val: `${fd.receivingMethod || 'Cash'} Account`, bold: false },
+        { label: 'Deposit Status', val: `${fd.status || 'ACTIVE'}`, bold: true, color: fd.status === 'ACTIVE' ? colorSuccessText : colorDark }
+      ];
+
+      depositRows.forEach((r, idx) => {
+        const rowBg = idx % 2 === 0 ? '#ffffff' : colorLightBg;
+        const rowH = 18;
+
+        doc
+          .rect(leftMargin, currentY, contentWidth, rowH)
+          .fillAndStroke(rowBg, colorBorder);
+
+        doc
+          .font('Helvetica')
+          .fontSize(7.5)
+          .fillColor(colorDark)
+          .text(r.label, leftMargin + 10, currentY + 5, { width: 280 });
+
+        doc
+          .font(r.bold ? 'Helvetica-Bold' : 'Helvetica')
+          .fontSize(r.highlight ? 8.5 : 7.5)
+          .fillColor(r.color || colorDark)
+          .text(r.val, leftMargin + 290, currentY + 5, { width: 220, align: 'right' });
+
+        currentY += rowH;
+      });
+
+      currentY += 12;
+
+      // ── 5. HIGHLIGHT SUMMARY BOX ─────────────────────────────────────────────
+      const summaryBoxHeight = 36;
+      doc
+        .roundedRect(leftMargin, currentY, contentWidth, summaryBoxHeight, 4)
+        .fillAndStroke(colorLightBg, colorBorder);
+
+      const sumColW = contentWidth / 3;
+      // Col 1: Deposit Principal
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(6.5)
+        .fillColor(colorMuted)
+        .text('DEPOSIT PRINCIPAL', leftMargin + 12, currentY + 6)
+        .font('Helvetica-Bold')
+        .fontSize(11.5)
+        .fillColor(colorDark)
+        .text(`Rs. ${fd.principal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, leftMargin + 12, currentY + 17);
+
+      // Col 2: Total Interest
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(6.5)
+        .fillColor(colorMuted)
+        .text('TOTAL INTEREST', leftMargin + sumColW + 12, currentY + 6)
+        .font('Helvetica-Bold')
+        .fontSize(11.5)
+        .fillColor(colorSuccessText)
+        .text(`Rs. ${totalExpectedInterest.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, leftMargin + sumColW + 12, currentY + 17);
+
+      // Col 3: Maturity Value
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(6.5)
+        .fillColor(colorEmerald)
+        .text('MATURITY VALUE', leftMargin + 2 * sumColW + 12, currentY + 6)
+        .font('Helvetica-Bold')
+        .fontSize(12)
+        .fillColor(colorEmerald)
+        .text(`Rs. ${expectedMaturity.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, leftMargin + 2 * sumColW + 12, currentY + 17);
+
+      currentY += summaryBoxHeight + 14;
+
+      // ── 6. TERMS & CONDITIONS ────────────────────────────────────────────────
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(7)
+        .fillColor(colorDark)
+        .text('TERMS & CONDITIONS:', leftMargin, currentY);
+
+      currentY += 9;
+
+      const terms = [
+        '1. Interest is payable monthly on or before the due date as per the agreed payout method.',
+        '2. Premature withdrawal or partial liquidation is subject to company rules, deduction of applicable processing charges, and branch approval.',
+        '3. This Fixed Deposit Certificate / Bill Receipt must be presented in original at the time of maturity settlement or liquidation.'
+      ];
+
+      terms.forEach((t) => {
+        doc
+          .font('Helvetica')
+          .fontSize(6.5)
+          .fillColor(colorMuted)
+          .text(t, leftMargin + 6, currentY, { width: contentWidth - 12 });
+        currentY += 9;
+      });
+
+      currentY += 12;
+
+      // ── 7. THREE-COLUMN SIGNATURE SECTION ───────────────────────────────────
+      const sigSectionY = currentY + 6;
+      const sigBlockW = (contentWidth - 40) / 3;
+
+      // 1. Customer Signature
+      const sig1X = leftMargin + 8;
+      doc
+        .strokeColor(colorBorder)
+        .lineWidth(0.8)
+        .moveTo(sig1X, sigSectionY + 28)
+        .lineTo(sig1X + sigBlockW, sigSectionY + 28)
+        .stroke();
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(7.5)
+        .fillColor(colorDark)
+        .text('Customer Signature', sig1X, sigSectionY + 32, { width: sigBlockW, align: 'center' });
+
+      doc
+        .font('Helvetica')
+        .fontSize(6.5)
+        .fillColor(colorMuted)
+        .text('Acknowledged & Verified', sig1X, sigSectionY + 42, { width: sigBlockW, align: 'center' });
+
+      // 2. Authorized Staff Signature
+      const sig2X = sig1X + sigBlockW + 12;
+      doc
+        .strokeColor(colorBorder)
+        .lineWidth(0.8)
+        .moveTo(sig2X, sigSectionY + 28)
+        .lineTo(sig2X + sigBlockW, sigSectionY + 28)
+        .stroke();
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(7.5)
+        .fillColor(colorDark)
+        .text('Authorized Staff', sig2X, sigSectionY + 32, { width: sigBlockW, align: 'center' });
+
+      doc
+        .font('Helvetica')
+        .fontSize(6.5)
+        .fillColor(colorMuted)
+        .text('Entered & Processed by', sig2X, sigSectionY + 42, { width: sigBlockW, align: 'center' });
+
+      // 3. Branch / Manager Signature
+      const sig3X = sig2X + sigBlockW + 12;
+      doc
+        .strokeColor(colorBorder)
+        .lineWidth(0.8)
+        .moveTo(sig3X, sigSectionY + 28)
+        .lineTo(sig3X + sigBlockW, sigSectionY + 28)
+        .stroke();
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(7.5)
+        .fillColor(colorDark)
+        .text(`For ${businessTitle}`, sig3X, sigSectionY + 32, { width: sigBlockW, align: 'center' });
+
+      doc
+        .font('Helvetica')
+        .fontSize(6.5)
+        .fillColor(colorMuted)
+        .text('Branch Manager / Signatory', sig3X, sigSectionY + 42, { width: sigBlockW, align: 'center' });
+
+      // ── 8. FOOTER ────────────────────────────────────────────────────────────
+      const footerY = sigSectionY + 62;
+      doc
+        .strokeColor(colorBorder)
+        .lineWidth(0.5)
+        .moveTo(leftMargin, footerY)
+        .lineTo(rightMargin, footerY)
+        .stroke();
+
+      doc
+        .font('Helvetica')
+        .fontSize(6.5)
+        .fillColor(colorMuted)
+        .text(
+          `This is a computer-generated official Fixed Deposit Receipt & Certificate issued by ${businessTitle}.`,
+          leftMargin,
+          footerY + 5,
+          { width: contentWidth, align: 'center' }
+        );
+
+      doc.end();
+    });
+  }
+
+  /**
+   * Generates a sanitized professional filename for the FD interest receipt PDF voucher
+   */
+  public generateFDInterestFilename(payout: FDInterestPayout): string {
+    const vNo = payout.voucherNumber || payout.id;
+    const fdNo = payout.fdNo || 'FD';
+    const rawCustomer = payout.depositorName || 'CUSTOMER';
+    const sanitizedCustomer = rawCustomer
+      .replace(/[^a-zA-Z0-9_-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .toUpperCase();
+
+    return `KKV-FD-Interest-Receipt-${vNo}-${fdNo}-${sanitizedCustomer}.pdf`;
+  }
+
+  /**
+   * Generates an official A4 Fixed Deposit Interest Payment Receipt PDF buffer
+   */
+  public async generateFDInterestReceiptPdfBuffer(options: FDInterestReceiptPdfOptions): Promise<Buffer> {
+    return new Promise<Buffer>((resolve, reject) => {
+      const { payout, fd, customer } = options;
+      const chunks: Buffer[] = [];
+
+      // Resolve Dynamic Central Branch Settings
+      const branchSettings: BranchSettings = {
+        ...DEFAULT_BRANCH_SETTINGS,
+        ...(adminService.getMasterSettings()?.branchSettings || {}),
+        ...(options.branchSettings || {})
+      };
+
+      const businessTitle = branchSettings.businessTitle || COMPANY_CONFIG.businessName;
+      const branchAddress = branchSettings.branchAddress || COMPANY_CONFIG.address;
+      const officialPhone = branchSettings.officialPhone || COMPANY_CONFIG.phone;
+      const gstin = branchSettings.gstin;
+
+      // A4 page setup (595.28 x 841.89 points) with 36pt margins
+      const doc = new PDFDocument({
+        size: 'A4',
+        margin: 36,
+        info: {
+          Title: `${businessTitle} - Interest Receipt ${payout.voucherNumber || payout.id}`,
+          Author: `${businessTitle} & Term Deposit Management`,
+          Subject: `Official Fixed Deposit Interest Payment Receipt for ${payout.fdNo}`,
+          Keywords: 'KKV Finance, Fixed Deposit, Interest, Receipt, Voucher',
+          CreationDate: new Date()
+        }
+      });
+
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', (err) => reject(err));
+
+      const pageWidth = 595.28;
+      const leftMargin = 36;
+      const rightMargin = pageWidth - 36;
+      const contentWidth = rightMargin - leftMargin; // 523.28 pt
+
+      // ── COLOR PALETTE ────────────────────────────────────────────────────────
+      const colorEmerald = '#064e3b';
+      const colorGold = '#b45309';
+      const colorDark = '#0f172a';
+      const colorMuted = '#64748b';
+      const colorLightBg = '#f8fafc';
+      const colorBorder = '#cbd5e1';
+      const colorSuccessBg = '#ecfdf5';
+      const colorSuccessText = '#047857';
+
+      let currentY = 36;
+
+      // ── 1. HEADER SECTION ───────────────────────────────────────────────────
+      const logoPath = this.findLogoPath();
+      if (logoPath) {
+        try {
+          doc.image(logoPath, leftMargin, currentY, { width: 44, height: 44 });
+        } catch {
+          doc.rect(leftMargin, currentY, 44, 44).fillAndStroke(colorEmerald, colorGold);
+        }
+      }
+
+      // Company Title & Info
+      const headerTextX = logoPath ? leftMargin + 52 : leftMargin;
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(15)
+        .fillColor(colorEmerald)
+        .text(businessTitle, headerTextX, currentY);
+
+      // Uppercase Address
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(7.5)
+        .fillColor(colorDark)
+        .text(branchAddress.toUpperCase(), headerTextX, currentY + 18, {
+          width: contentWidth - (logoPath ? 52 : 0) - 150
+        });
+
+      // Phone Box
+      const phoneBoxX = headerTextX;
+      const phoneBoxY = currentY + 31;
+      const phoneBoxWidth = 84;
+      const phoneBoxHeight = 12;
+
+      doc
+        .roundedRect(phoneBoxX, phoneBoxY, phoneBoxWidth, phoneBoxHeight, 2.5)
+        .fill('#dc2626');
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(7)
+        .fillColor('#ffffff')
+        .text(`Ph: ${officialPhone}`, phoneBoxX, phoneBoxY + 2.5, {
+          width: phoneBoxWidth,
+          align: 'center'
+        });
+
+      // Optional GSTIN Tag
+      if (gstin && gstin.trim()) {
+        const gstinBoxX = phoneBoxX + phoneBoxWidth + 6;
+        const gstinBoxWidth = 95;
+        doc
+          .roundedRect(gstinBoxX, phoneBoxY, gstinBoxWidth, phoneBoxHeight, 2.5)
+          .fill(colorEmerald);
+
+        doc
+          .font('Helvetica-Bold')
+          .fontSize(6.5)
+          .fillColor('#ffffff')
+          .text(`GST: ${gstin}`, gstinBoxX, phoneBoxY + 2.5, {
+            width: gstinBoxWidth,
+            align: 'center'
+          });
+      }
+
+      // Right-aligned Document Meta Badge
+      const metaBoxWidth = 160;
+      const metaBoxX = rightMargin - metaBoxWidth;
+
+      doc
+        .roundedRect(metaBoxX, currentY, metaBoxWidth, 20, 3)
+        .fill(colorEmerald);
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(8.5)
+        .fillColor('#ffffff')
+        .text('FD INTEREST PAYMENT RECEIPT', metaBoxX, currentY + 5.5, {
+          width: metaBoxWidth,
+          align: 'center'
+        });
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(10)
+        .fillColor(colorEmerald)
+        .text(`VOUCHER #${payout.voucherNumber || payout.id}`, metaBoxX, currentY + 26, {
+          width: metaBoxWidth,
+          align: 'right'
+        });
+
+      currentY += 52;
+
+      // Decorative Divider Line
+      doc
+        .strokeColor(colorEmerald)
+        .lineWidth(1.5)
+        .moveTo(leftMargin, currentY)
+        .lineTo(rightMargin, currentY)
+        .stroke();
+
+      currentY += 10;
+
+      // ── 2. METADATA SUMMARY STRIP ────────────────────────────────────────────
+      const metaBarHeight = 32;
+      doc
+        .roundedRect(leftMargin, currentY, contentWidth, metaBarHeight, 4)
+        .fillAndStroke(colorLightBg, colorBorder);
+
+      const colW = contentWidth / 4;
+      const periodText = payout.periodLabel || payout.dueDate || payout.periodKey || 'Monthly Payout';
+      const metaItems = [
+        { label: 'VOUCHER NUMBER', value: payout.voucherNumber || payout.id, isBold: true, color: colorEmerald },
+        { label: 'FD NUMBER', value: payout.fdNo, isBold: true, color: colorDark },
+        { label: 'PAYMENT DATE', value: payout.date, isBold: true, color: colorDark },
+        { label: 'INTEREST PERIOD', value: periodText, isBold: true, color: colorEmerald }
+      ];
+
+      metaItems.forEach((item, idx) => {
+        const itemX = leftMargin + idx * colW + 8;
+        doc
+          .font('Helvetica')
+          .fontSize(6.5)
+          .fillColor(colorMuted)
+          .text(item.label, itemX, currentY + 5);
+
+        doc
+          .font(item.isBold ? 'Helvetica-Bold' : 'Helvetica')
+          .fontSize(8.5)
+          .fillColor(item.color)
+          .text(item.value, itemX, currentY + 16, { width: colW - 12, height: 14, ellipsis: true });
+      });
+
+      currentY += metaBarHeight + 12;
+
+      // ── 3. CUSTOMER DETAILS CARD ────────────────────────────────────────────
+      const custCardHeight = 52;
+      doc
+        .roundedRect(leftMargin, currentY, contentWidth, custCardHeight, 4)
+        .fillAndStroke('#ffffff', colorBorder);
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(8)
+        .fillColor(colorEmerald)
+        .text('DEPOSITOR & CUSTOMER DETAILS', leftMargin + 10, currentY + 7);
+
+      const custName = customer?.name || payout.depositorName;
+      const custId = customer?.id || payout.customerId || fd?.customerId || '—';
+      const custPhone = customer?.phone || payout.customerPhone || fd?.phone || '—';
+      const custAddr = customer?.currentAddress || payout.customerAddress || fd?.address || 'Address on record';
+
+      const custRow1Y = currentY + 20;
+      const custRow2Y = currentY + 35;
+
+      // Row 1: Name, ID, Mobile
+      doc
+        .font('Helvetica')
+        .fontSize(7)
+        .fillColor(colorMuted)
+        .text('Depositor Name:', leftMargin + 10, custRow1Y)
+        .font('Helvetica-Bold')
+        .fontSize(8.5)
+        .fillColor(colorDark)
+        .text(custName, leftMargin + 76, custRow1Y);
+
+      doc
+        .font('Helvetica')
+        .fontSize(7)
+        .fillColor(colorMuted)
+        .text('Customer ID:', leftMargin + 240, custRow1Y)
+        .font('Helvetica-Bold')
+        .fontSize(8.5)
+        .fillColor(colorEmerald)
+        .text(custId, leftMargin + 295, custRow1Y);
+
+      doc
+        .font('Helvetica')
+        .fontSize(7)
+        .fillColor(colorMuted)
+        .text('Mobile Number:', leftMargin + 380, custRow1Y)
+        .font('Helvetica-Bold')
+        .fontSize(8.5)
+        .fillColor(colorDark)
+        .text(`+91 ${custPhone}`, leftMargin + 442, custRow1Y);
+
+      // Row 2: Address
+      doc
+        .font('Helvetica')
+        .fontSize(7)
+        .fillColor(colorMuted)
+        .text('Address:', leftMargin + 10, custRow2Y)
+        .font('Helvetica')
+        .fontSize(7.5)
+        .fillColor(colorDark)
+        .text(custAddr, leftMargin + 50, custRow2Y, { width: contentWidth - 70, height: 14, ellipsis: true });
+
+      currentY += custCardHeight + 12;
+
+      // ── 4. INTEREST FINANCIAL BREAKDOWN TABLE ────────────────────────────────
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(8.5)
+        .fillColor(colorEmerald)
+        .text('INTEREST SETTLEMENT & TRANSACTION BREAKDOWN', leftMargin, currentY);
+
+      currentY += 12;
+
+      // Table Header
+      const thHeight = 18;
+      doc
+        .roundedRect(leftMargin, currentY, contentWidth, thHeight, 2)
+        .fill(colorEmerald);
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(7.5)
+        .fillColor('#ffffff')
+        .text('TRANSACTION PARAMETER', leftMargin + 10, currentY + 5, { width: 250 })
+        .text('SETTLEMENT VALUE & PARTICULARS', leftMargin + 270, currentY + 5, { width: 240, align: 'right' });
+
+      currentY += thHeight;
+
+      const principal = payout.principalAtPayment ?? (fd?.remainingPrincipal ?? fd?.principal ?? 0);
+      const rate = payout.interestRatePA ?? (fd?.interestRatePA ?? 12);
+      const monthlyYield = payout.monthlyPayout ?? (fd?.monthlyPayout ?? Math.round((principal * rate) / 1200));
+      const earned = payout.earnedInterest ?? payout.amount;
+      const pendingBefore = payout.pendingInterestBefore ?? payout.amount;
+      const pendingAfter = payout.pendingInterestAfter ?? Math.max(0, pendingBefore - payout.amount);
+
+      let modeDetails = `${payout.mode || 'Cash'} Account`;
+      if (payout.bankName) modeDetails += ` (${payout.bankName})`;
+      if (payout.transactionReference) modeDetails += ` - Ref: ${payout.transactionReference}`;
+      if (payout.upiId) modeDetails += ` - UPI: ${payout.upiId}`;
+
+      const interestRows = [
+        { label: 'Active Deposit Principal Base', val: `Rs. ${principal.toLocaleString('en-IN')}`, bold: true },
+        { label: 'Contractual Interest Rate (% Per Annum)', val: `${rate}% p.a.`, bold: true },
+        { label: 'Monthly Interest Commitment', val: `Rs. ${monthlyYield.toLocaleString('en-IN')} / month`, bold: false },
+        { label: 'Billing Period / Cycle Covered', val: periodText, bold: false },
+        { label: 'Interest Accrued / Due for Cycle', val: `Rs. ${earned.toLocaleString('en-IN')}`, bold: false },
+        { label: 'Pending Interest Balance Before Payment', val: `Rs. ${pendingBefore.toLocaleString('en-IN')}`, bold: false },
+        { label: 'Interest Amount Disbursed / Paid (This Voucher)', val: `Rs. ${payout.amount.toLocaleString('en-IN')}`, bold: true, color: colorSuccessText, highlight: true },
+        { label: 'Remaining Pending Interest Balance', val: `Rs. ${pendingAfter.toLocaleString('en-IN')}`, bold: true, color: pendingAfter > 0 ? colorGold : colorSuccessText },
+        { label: 'Payment Disbursement Mode', val: modeDetails, bold: false },
+        { label: 'Payment Status', val: `${payout.status || 'PAID'}`, bold: true, color: colorSuccessText }
+      ];
+
+      interestRows.forEach((r, idx) => {
+        const rowBg = idx % 2 === 0 ? '#ffffff' : colorLightBg;
+        const rowH = 17;
+
+        doc
+          .rect(leftMargin, currentY, contentWidth, rowH)
+          .fillAndStroke(rowBg, colorBorder);
+
+        doc
+          .font('Helvetica')
+          .fontSize(7.5)
+          .fillColor(colorDark)
+          .text(r.label, leftMargin + 10, currentY + 4.5, { width: 280 });
+
+        doc
+          .font(r.bold ? 'Helvetica-Bold' : 'Helvetica')
+          .fontSize(r.highlight ? 8.5 : 7.5)
+          .fillColor(r.color || colorDark)
+          .text(r.val, leftMargin + 270, currentY + 4.5, { width: 240, align: 'right' });
+
+        currentY += rowH;
+      });
+
+      currentY += 12;
+
+      // ── 5. HIGHLIGHT TOTAL PAID BOX ──────────────────────────────────────────
+      const summaryBoxHeight = 36;
+      doc
+        .roundedRect(leftMargin, currentY, contentWidth, summaryBoxHeight, 4)
+        .fillAndStroke(colorSuccessBg, '#a7f3d0');
+
+      const sumColW = contentWidth / 3;
+      // Col 1: Total Paid
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(6.5)
+        .fillColor(colorMuted)
+        .text('TOTAL INTEREST PAID', leftMargin + 12, currentY + 6)
+        .font('Helvetica-Bold')
+        .fontSize(13)
+        .fillColor(colorEmerald)
+        .text(`Rs. ${payout.amount.toLocaleString('en-IN')}`, leftMargin + 12, currentY + 17);
+
+      // Col 2: Payment Mode
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(6.5)
+        .fillColor(colorMuted)
+        .text('PAYMENT MODE', leftMargin + sumColW + 12, currentY + 6)
+        .font('Helvetica-Bold')
+        .fontSize(11)
+        .fillColor(colorDark)
+        .text(`${payout.mode || 'Cash'}`, leftMargin + sumColW + 12, currentY + 17);
+
+      // Col 3: Payment Date
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(6.5)
+        .fillColor(colorMuted)
+        .text('PAYMENT DATE', leftMargin + 2 * sumColW + 12, currentY + 6)
+        .font('Helvetica-Bold')
+        .fontSize(11)
+        .fillColor(colorDark)
+        .text(`${payout.date}`, leftMargin + 2 * sumColW + 12, currentY + 17);
+
+      currentY += summaryBoxHeight + 14;
+
+      // Remarks note if present
+      if (payout.remarks && payout.remarks.trim()) {
+        doc
+          .font('Helvetica-Bold')
+          .fontSize(7)
+          .fillColor(colorDark)
+          .text('REMARKS / TRANSACTION NOTES:', leftMargin, currentY);
+
+        doc
+          .font('Helvetica')
+          .fontSize(6.5)
+          .fillColor(colorMuted)
+          .text(payout.remarks, leftMargin + 130, currentY, { width: contentWidth - 130 });
+
+        currentY += 12;
+      }
+
+      // ── 6. ACCOUNTING & AUDIT NOTE ──────────────────────────────────────────
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(7)
+        .fillColor(colorDark)
+        .text('TERMS & AUDIT PARTICULARS:', leftMargin, currentY);
+
+      currentY += 9;
+
+      const terms = [
+        '1. Interest payment has been recorded and debited from branch accounts under Account Head: Interest Paid.',
+        '2. This voucher acknowledges the disbursement of term deposit dividend for the specified cycle period.',
+        '3. Retain this payment receipt along with your original Fixed Deposit Certificate for taxation and audit purposes.'
+      ];
+
+      terms.forEach((t) => {
+        doc
+          .font('Helvetica')
+          .fontSize(6.5)
+          .fillColor(colorMuted)
+          .text(t, leftMargin + 6, currentY, { width: contentWidth - 12 });
+        currentY += 9;
+      });
+
+      currentY += 14;
+
+      // ── 7. THREE-COLUMN SIGNATURE SECTION ───────────────────────────────────
+      const sigSectionY = currentY + 6;
+      const sigBlockW = (contentWidth - 40) / 3;
+
+      // 1. Customer Signature
+      const sig1X = leftMargin + 8;
+      doc
+        .strokeColor(colorBorder)
+        .lineWidth(0.8)
+        .moveTo(sig1X, sigSectionY + 28)
+        .lineTo(sig1X + sigBlockW, sigSectionY + 28)
+        .stroke();
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(7.5)
+        .fillColor(colorDark)
+        .text('Customer Signature', sig1X, sigSectionY + 32, { width: sigBlockW, align: 'center' });
+
+      doc
+        .font('Helvetica')
+        .fontSize(6.5)
+        .fillColor(colorMuted)
+        .text('Received & Acknowledged', sig1X, sigSectionY + 42, { width: sigBlockW, align: 'center' });
+
+      // 2. Authorized Staff Signature
+      const sig2X = sig1X + sigBlockW + 12;
+      doc
+        .strokeColor(colorBorder)
+        .lineWidth(0.8)
+        .moveTo(sig2X, sigSectionY + 28)
+        .lineTo(sig2X + sigBlockW, sigSectionY + 28)
+        .stroke();
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(7.5)
+        .fillColor(colorDark)
+        .text('Authorized Staff', sig2X, sigSectionY + 32, { width: sigBlockW, align: 'center' });
+
+      doc
+        .font('Helvetica')
+        .fontSize(6.5)
+        .fillColor(colorMuted)
+        .text('Disbursed & Processed by', sig2X, sigSectionY + 42, { width: sigBlockW, align: 'center' });
+
+      // 3. Branch / Manager Signature
+      const sig3X = sig2X + sigBlockW + 12;
+      doc
+        .strokeColor(colorBorder)
+        .lineWidth(0.8)
+        .moveTo(sig3X, sigSectionY + 28)
+        .lineTo(sig3X + sigBlockW, sigSectionY + 28)
+        .stroke();
+
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(7.5)
+        .fillColor(colorDark)
+        .text(`For ${businessTitle}`, sig3X, sigSectionY + 32, { width: sigBlockW, align: 'center' });
+
+      doc
+        .font('Helvetica')
+        .fontSize(6.5)
+        .fillColor(colorMuted)
+        .text('Branch Manager / Signatory', sig3X, sigSectionY + 42, { width: sigBlockW, align: 'center' });
+
+      // ── 8. FOOTER ────────────────────────────────────────────────────────────
+      const footerY = sigSectionY + 62;
+      doc
+        .strokeColor(colorBorder)
+        .lineWidth(0.5)
+        .moveTo(leftMargin, footerY)
+        .lineTo(rightMargin, footerY)
+        .stroke();
+
+      doc
+        .font('Helvetica')
+        .fontSize(6.5)
+        .fillColor(colorMuted)
+        .text(
+          `This is a computer-generated official Fixed Deposit Interest Payment Voucher issued by ${businessTitle}.`,
+          leftMargin,
+          footerY + 5,
           { width: contentWidth, align: 'center' }
         );
 

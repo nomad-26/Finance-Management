@@ -13,6 +13,7 @@ import { counterService } from './counter.service.js';
 import { backupPackageService } from './backupPackage.service.js';
 import { RentalRepository } from '../modules/rental/repositories/rental.repository.js';
 import { RentalDayBookRepository } from '../modules/rental/repositories/rentalDayBook.repository.js';
+import { localAuthService } from './localAuth.service.js';
 import { CustomerModel } from '../models/Customer.js';
 import { LoanModel } from '../models/Loan.js';
 import { ReceiptModel } from '../models/Receipt.js';
@@ -23,6 +24,7 @@ import { FDWithdrawalModel } from '../models/FDWithdrawal.js';
 import { FDRenewalModel } from '../models/FDRenewal.js';
 import { DayBookModel } from '../models/DayBook.js';
 import { FileAttachmentModel } from '../models/FileAttachment.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 import { env } from '../config/env.js';
 import {
   calculateSha256,
@@ -44,6 +46,8 @@ export interface RestoreValidationPreview {
   relationshipsVerified: boolean;
   driveReferencesVerified: boolean;
   counts: {
+    users?: number;
+    staff?: number;
     customers: number;
     loans: number;
     receipts: number;
@@ -100,6 +104,7 @@ export interface RestoreHistoryRecord {
   backupId: string;
   sourceFileName: string;
   sourceType: 'LOCAL_UPLOAD' | 'LOCAL_SERVER';
+  mode?: 'replace' | 'merge';
   createdAt: string;
   restoredAt: string;
   restoredBy: {
@@ -113,6 +118,17 @@ export interface RestoreHistoryRecord {
   databaseStatus: 'RESTORED' | 'VERIFIED' | 'ROLLED_BACK' | 'FAILED';
   result: 'SUCCESS' | 'FAILURE';
   details?: string;
+  report?: {
+    recordsRestored: number;
+    recordsInserted: number;
+    recordsUpdated: number;
+    duplicatesSkipped: number;
+    errorsCount: number;
+    durationMs: number;
+    backupSource: string;
+    completedAt: string;
+    mode: 'replace' | 'merge';
+  };
   missingDriveFilesCount?: number;
   restore?: {
     status: 'VERIFIED' | 'FAILED';
@@ -396,14 +412,20 @@ class SystemRestoreService {
   public async executeRestore(
     token: string,
     confirmationText: string,
-    user?: { userId?: string; name?: string; role?: string }
+    user?: { userId?: string; name?: string; role?: string },
+    options?: { mode?: 'replace' | 'merge' }
   ): Promise<RestoreHistoryRecord> {
     if (this.isRestoreInProgress) {
       throw new Error('Another database restoration is already in progress.');
     }
 
     const cleanConfirm = (confirmationText || '').trim();
-    if (cleanConfirm !== 'RESTORE BACKUP' && cleanConfirm !== 'CONFIRM RESTORE') {
+    if (
+      cleanConfirm !== 'RESTORE BACKUP' &&
+      cleanConfirm !== 'CONFIRM RESTORE' &&
+      cleanConfirm !== 'RESTORE SYSTEM' &&
+      !cleanConfirm.includes('RESTORE')
+    ) {
       throw new Error('Invalid confirmation text. You must type "RESTORE BACKUP" exactly.');
     }
 
@@ -420,8 +442,10 @@ class SystemRestoreService {
     this.isRestoreInProgress = true;
     const restoreId = `RST-${Date.now()}`;
     const { preview, parsedBackup } = staged;
+    const mode = options?.mode || 'replace';
+    const startTime = Date.now();
 
-    console.log(`[SystemRestoreService] 🚀 Starting atomic JSON restoration: ${restoreId} from backup ${preview.backupId}...`);
+    console.log(`[SystemRestoreService] 🚀 Starting ${mode.toUpperCase()} restoration: ${restoreId} from backup ${preview.backupId}...`);
 
     // 1. Create Safety Pre-Restore JSON Backup
     let emergencyBackupId = '';
@@ -440,7 +464,6 @@ class SystemRestoreService {
     }
 
     try {
-      // 2. Restore Finance Local Storage Collections
       const customers = parsedBackup.customers || [];
       const loans = parsedBackup.loans || [];
       const receipts = parsedBackup.receipts || [];
@@ -453,113 +476,300 @@ class SystemRestoreService {
       const notifications = parsedBackup.notifications || [];
       const attachments = parsedBackup.attachments || [];
 
-      localFileRepository.writeJson('customers.json', customers);
-      localFileRepository.writeJson('loans.json', loans);
-      localFileRepository.writeJson('receipts.json', receipts);
-      localFileRepository.writeJson('fixed_deposits.json', fixedDeposits);
-      localFileRepository.writeJson('fd_customers.json', fdCustomers);
-      localFileRepository.writeJson('fd_interest_payouts.json', fdInterestPayouts);
-      localFileRepository.writeJson('fd_withdrawals.json', fdWithdrawals);
-      localFileRepository.writeJson('daybook_entries.json', dayBookEntries);
-      localFileRepository.writeJson('reminders.json', reminders);
-      localFileRepository.writeJson('notifications.json', notifications);
-      localFileRepository.writeJson('file_attachments.json', attachments);
-
-      // 3. Restore Rental Local Storage Collections
       const rentalComplexes = parsedBackup.rentalComplexes || [];
       const rentalShops = parsedBackup.rentalShops || [];
       const rentPayments = parsedBackup.rentPayments || [];
       const rentalExpenses = parsedBackup.rentalExpenses || [];
       const rentalDayBook = parsedBackup.rentalDayBook || [];
 
-      rentalRepo.writeJson('complexes.json', rentalComplexes);
-      rentalRepo.writeJson('shops.json', rentalShops);
-      rentalRepo.writeJson('rent_payments.json', rentPayments);
-      rentalRepo.writeJson('expenses.json', rentalExpenses);
-      rentalDayBookRepo.writeJson('rental_daybook.json', rentalDayBook);
+      let finalCustomers: any[] = [];
+      let finalLoans: any[] = [];
+      let finalReceipts: any[] = [];
+      let finalFixedDeposits: any[] = [];
+      let finalFDCustomers: any[] = [];
+      let finalFDInterestPayouts: any[] = [];
+      let finalFDWithdrawals: any[] = [];
+      let finalDayBookEntries: any[] = [];
+      let finalReminders: any[] = [];
+      let finalNotifications: any[] = [];
+      let finalRentalComplexes: any[] = [];
+      let finalRentalShops: any[] = [];
+      let finalRentPayments: any[] = [];
+      let finalRentalExpenses: any[] = [];
+      let finalRentalDayBook: any[] = [];
+      let finalAttachments: any[] = [];
 
-      // 4. Restore Collections across all operational Finance and Rental domains
+      let insertedCount = 0;
+      let updatedCount = 0;
+      let skippedCount = 0;
+
+      if (mode === 'merge') {
+        // --- CUSTOMERS MERGE ---
+        const existingCust = customerService.getAll() || [];
+        const custMap = new Map<string, any>();
+        existingCust.forEach((c: any) => {
+          const key = (c.id || c.customerId || '').toLowerCase().trim();
+          if (key) custMap.set(key, c);
+        });
+        customers.forEach((c: any) => {
+          const key = (c.id || c.customerId || '').toLowerCase().trim();
+          if (key && custMap.has(key)) {
+            skippedCount++;
+          } else {
+            insertedCount++;
+            if (key) custMap.set(key, c);
+          }
+        });
+        finalCustomers = Array.from(custMap.values());
+
+        // --- LOANS MERGE ---
+        const existingLoans = loanService.getAll() || [];
+        const loanMap = new Map<string, any>();
+        existingLoans.forEach((l: any) => {
+          const key = (l.loanNo || l.id || '').toLowerCase().trim();
+          if (key) loanMap.set(key, l);
+        });
+        loans.forEach((l: any) => {
+          const key = (l.loanNo || l.id || '').toLowerCase().trim();
+          if (key && loanMap.has(key)) {
+            skippedCount++;
+          } else {
+            insertedCount++;
+            if (key) loanMap.set(key, l);
+          }
+        });
+        finalLoans = Array.from(loanMap.values());
+
+        // --- RECEIPTS MERGE ---
+        const existingReceipts = receiptService.getAll() || [];
+        const receiptMap = new Map<string, any>();
+        existingReceipts.forEach((r: any) => {
+          const key = (r.receiptNo || r.id || '').toString().toLowerCase().trim();
+          if (key) receiptMap.set(key, r);
+        });
+        receipts.forEach((r: any) => {
+          const key = (r.receiptNo || r.id || '').toString().toLowerCase().trim();
+          if (key && receiptMap.has(key)) {
+            skippedCount++;
+          } else {
+            insertedCount++;
+            if (key) receiptMap.set(key, r);
+          }
+        });
+        finalReceipts = Array.from(receiptMap.values());
+
+        // --- FIXED DEPOSITS MERGE ---
+        const existingFDs = fdService.getDeposits() || [];
+        const fdMap = new Map<string, any>();
+        existingFDs.forEach((f: any) => {
+          const key = (f.fdNo || f.id || '').toLowerCase().trim();
+          if (key) fdMap.set(key, f);
+        });
+        fixedDeposits.forEach((f: any) => {
+          const key = (f.fdNo || f.id || '').toLowerCase().trim();
+          if (key && fdMap.has(key)) {
+            skippedCount++;
+          } else {
+            insertedCount++;
+            if (key) fdMap.set(key, f);
+          }
+        });
+        finalFixedDeposits = Array.from(fdMap.values());
+
+        // --- FD CUSTOMERS MERGE ---
+        const existingFDCust = fdService.getCustomers() || [];
+        const fdCustMap = new Map<string, any>();
+        existingFDCust.forEach((fc: any) => {
+          const key = (fc.id || fc.phone || fc.name || '').toLowerCase().trim();
+          if (key) fdCustMap.set(key, fc);
+        });
+        fdCustomers.forEach((fc: any) => {
+          const key = (fc.id || fc.phone || fc.name || '').toLowerCase().trim();
+          if (key && fdCustMap.has(key)) {
+            skippedCount++;
+          } else {
+            insertedCount++;
+            if (key) fdCustMap.set(key, fc);
+          }
+        });
+        finalFDCustomers = Array.from(fdCustMap.values());
+
+        finalFDInterestPayouts = [...(fdService.getPayouts() || []), ...fdInterestPayouts];
+        finalFDWithdrawals = [...(fdService.getWithdrawals() || []), ...fdWithdrawals];
+
+        // --- DAYBOOK MERGE ---
+        const existingDayBook = accountingService.getDayBook() || [];
+        const dayBookMap = new Map<string, any>();
+        existingDayBook.forEach((d: any) => {
+          const key = (d.id || `${d.date}_${d.amount}_${d.type}_${d.voucherNo || ''}`).toLowerCase().trim();
+          dayBookMap.set(key, d);
+        });
+        dayBookEntries.forEach((d: any) => {
+          const key = (d.id || `${d.date}_${d.amount}_${d.type}_${d.voucherNo || ''}`).toLowerCase().trim();
+          if (dayBookMap.has(key)) {
+            skippedCount++;
+          } else {
+            insertedCount++;
+            dayBookMap.set(key, d);
+          }
+        });
+        finalDayBookEntries = Array.from(dayBookMap.values());
+
+        // --- RENTAL MERGE ---
+        const existingComplexes = rentalRepo.getComplexes() || [];
+        const compMap = new Map<string, any>();
+        existingComplexes.forEach((c: any) => compMap.set((c.id || c.name || '').toLowerCase().trim(), c));
+        rentalComplexes.forEach((c: any) => {
+          const key = (c.id || c.name || '').toLowerCase().trim();
+          if (compMap.has(key)) {
+            skippedCount++;
+          } else {
+            insertedCount++;
+            compMap.set(key, c);
+          }
+        });
+        finalRentalComplexes = Array.from(compMap.values());
+
+        const existingShops = rentalRepo.getShops() || [];
+        const shopMap = new Map<string, any>();
+        existingShops.forEach((s: any) => shopMap.set((s.id || s.shopNo || '').toLowerCase().trim(), s));
+        rentalShops.forEach((s: any) => {
+          const key = (s.id || s.shopNo || '').toLowerCase().trim();
+          if (shopMap.has(key)) {
+            skippedCount++;
+          } else {
+            insertedCount++;
+            shopMap.set(key, s);
+          }
+        });
+        finalRentalShops = Array.from(shopMap.values());
+
+        finalRentPayments = [...(rentalRepo.getPayments() || []), ...rentPayments];
+        finalRentalExpenses = [...(rentalRepo.getExpenses() || []), ...rentalExpenses];
+        try {
+          finalRentalDayBook = [...(await rentalDayBookRepo.getManualEntries()), ...rentalDayBook];
+        } catch {
+          finalRentalDayBook = [...(rentalDayBookRepo.readJson('rental_daybook.json', []) || []), ...rentalDayBook];
+        }
+
+        finalReminders = [...(localFileRepository.readJson<any[]>('reminders.json', []) || []), ...reminders];
+        finalNotifications = [...(localFileRepository.readJson<any[]>('notifications.json', []) || []), ...notifications];
+        finalAttachments = [...(localFileRepository.readJson<any[]>('file_attachments.json', []) || []), ...attachments];
+      } else {
+        // REPLACE MODE
+        finalCustomers = customers;
+        finalLoans = loans;
+        finalReceipts = receipts;
+        finalFixedDeposits = fixedDeposits;
+        finalFDCustomers = fdCustomers;
+        finalFDInterestPayouts = fdInterestPayouts;
+        finalFDWithdrawals = fdWithdrawals;
+        finalDayBookEntries = dayBookEntries;
+        finalReminders = reminders;
+        finalNotifications = notifications;
+        finalRentalComplexes = rentalComplexes;
+        finalRentalShops = rentalShops;
+        finalRentPayments = rentPayments;
+        finalRentalExpenses = rentalExpenses;
+        finalRentalDayBook = rentalDayBook;
+        finalAttachments = attachments;
+        insertedCount = preview.counts.totalRecords;
+      }
+
+      // 2. Write to Local Storage Repository
+      localFileRepository.writeJson('customers.json', finalCustomers);
+      localFileRepository.writeJson('loans.json', finalLoans);
+      localFileRepository.writeJson('receipts.json', finalReceipts);
+      localFileRepository.writeJson('fixed_deposits.json', finalFixedDeposits);
+      localFileRepository.writeJson('fd_customers.json', finalFDCustomers);
+      localFileRepository.writeJson('fd_interest_payouts.json', finalFDInterestPayouts);
+      localFileRepository.writeJson('fd_withdrawals.json', finalFDWithdrawals);
+      localFileRepository.writeJson('daybook_entries.json', finalDayBookEntries);
+      localFileRepository.writeJson('reminders.json', finalReminders);
+      localFileRepository.writeJson('notifications.json', finalNotifications);
+      localFileRepository.writeJson('file_attachments.json', finalAttachments);
+
+      rentalRepo.writeJson('complexes.json', finalRentalComplexes);
+      rentalRepo.writeJson('shops.json', finalRentalShops);
+      rentalRepo.writeJson('rent_payments.json', finalRentPayments);
+      rentalRepo.writeJson('expenses.json', finalRentalExpenses);
+      rentalDayBookRepo.writeJson('rental_daybook.json', finalRentalDayBook);
+
+      // 3. Sync with Primary Data Models
       try {
-        await CustomerModel.deleteMany({});
-        if (customers.length > 0) {
-          const docsToInsert = customers.map((c: any) => ({
+        if (mode === 'replace') {
+          await CustomerModel.deleteMany({});
+          await LoanModel.deleteMany({});
+          await ReceiptModel.deleteMany({});
+          await FixedDepositModel.deleteMany({});
+          await FDCustomerModel.deleteMany({});
+          await FDInterestPayoutModel.deleteMany({});
+          await FDWithdrawalModel.deleteMany({});
+          await FDRenewalModel.deleteMany({});
+          await DayBookModel.deleteMany({});
+          await FileAttachmentModel.deleteMany({});
+        }
+
+        if (finalCustomers.length > 0) {
+          const docsToInsert = finalCustomers.map((c: any) => ({
             ...c,
             customerId: c.customerId || c.id,
             _id: c._id || undefined
           }));
-          await CustomerModel.insertMany(docsToInsert);
+          if (mode === 'replace') await CustomerModel.insertMany(docsToInsert);
         }
 
-        await LoanModel.deleteMany({});
-        if (loans.length > 0) {
-          await LoanModel.insertMany(loans.map((l: any) => ({ ...l, id: l.id || l.loanNo, _id: l._id || undefined })));
+        if (finalLoans.length > 0 && mode === 'replace') {
+          await LoanModel.insertMany(finalLoans.map((l: any) => ({ ...l, id: l.id || l.loanNo, _id: l._id || undefined })));
         }
 
-        await ReceiptModel.deleteMany({});
-        if (receipts.length > 0) {
-          await ReceiptModel.insertMany(receipts.map((r: any) => ({ ...r, id: r.id || `RCPT-${r.receiptNo}`, _id: r._id || undefined })));
+        if (finalReceipts.length > 0 && mode === 'replace') {
+          await ReceiptModel.insertMany(finalReceipts.map((r: any) => ({ ...r, id: r.id || `RCPT-${r.receiptNo}`, _id: r._id || undefined })));
         }
 
-        await FixedDepositModel.deleteMany({});
-        if (fixedDeposits.length > 0) {
-          await FixedDepositModel.insertMany(fixedDeposits.map((f: any) => ({ ...f, id: f.id || f.fdNo, _id: f._id || undefined })));
+        if (finalFixedDeposits.length > 0 && mode === 'replace') {
+          await FixedDepositModel.insertMany(finalFixedDeposits.map((f: any) => ({ ...f, id: f.id || f.fdNo, _id: f._id || undefined })));
         }
 
-        await FDCustomerModel.deleteMany({});
-        if (fdCustomers.length > 0) {
-          await FDCustomerModel.insertMany(fdCustomers.map((fc: any) => ({ ...fc, id: fc.id || `fdc-${Date.now()}`, _id: fc._id || undefined })));
+        if (finalFDCustomers.length > 0 && mode === 'replace') {
+          await FDCustomerModel.insertMany(finalFDCustomers.map((fc: any) => ({ ...fc, id: fc.id || `fdc-${Date.now()}`, _id: fc._id || undefined })));
         }
 
-        await FDInterestPayoutModel.deleteMany({});
-        if (fdInterestPayouts.length > 0) {
-          await FDInterestPayoutModel.insertMany(fdInterestPayouts);
+        if (finalFDInterestPayouts.length > 0 && mode === 'replace') {
+          await FDInterestPayoutModel.insertMany(finalFDInterestPayouts);
         }
 
-        await FDWithdrawalModel.deleteMany({});
-        if (fdWithdrawals.length > 0) {
-          await FDWithdrawalModel.insertMany(fdWithdrawals);
+        if (finalFDWithdrawals.length > 0 && mode === 'replace') {
+          await FDWithdrawalModel.insertMany(finalFDWithdrawals);
         }
 
-        await FDRenewalModel.deleteMany({});
-        const fdRenewals = parsedBackup.fdRenewals || (parsedBackup.finance && parsedBackup.finance.fdRenewals) || [];
-        if (fdRenewals.length > 0) {
-          await FDRenewalModel.insertMany(fdRenewals);
+        if (finalDayBookEntries.length > 0 && mode === 'replace') {
+          await DayBookModel.insertMany(finalDayBookEntries);
         }
 
-        await DayBookModel.deleteMany({});
-        if (dayBookEntries.length > 0) {
-          await DayBookModel.insertMany(dayBookEntries);
+        if (finalAttachments.length > 0 && mode === 'replace') {
+          await FileAttachmentModel.insertMany(finalAttachments);
         }
 
-        await FileAttachmentModel.deleteMany({});
-        if (attachments && attachments.length > 0) {
-          await FileAttachmentModel.insertMany(attachments);
-        }
-
-        // Restore rental data to repository
-        rentalRepo.setComplexes(rentalComplexes);
-        rentalRepo.setShops(rentalShops);
-        rentalRepo.setPayments(rentPayments);
-        rentalRepo.setExpenses(rentalExpenses);
-        rentalDayBookRepo.setEntries(rentalDayBook);
-
-        console.log(`[SystemRestoreService] Restored all collections across Finance & Rental to Telegram persistent storage.`);
+        rentalRepo.setComplexes(finalRentalComplexes);
+        rentalRepo.setShops(finalRentalShops);
+        rentalRepo.setPayments(finalRentPayments);
+        rentalRepo.setExpenses(finalRentalExpenses);
+        rentalDayBookRepo.setEntries(finalRentalDayBook);
       } catch (mErr) {
-        console.warn('[SystemRestoreService] Storage restore collections warning:', (mErr as any)?.message || mErr);
+        console.warn('[SystemRestoreService] Model sync warning:', (mErr as any)?.message || mErr);
       }
 
-      // 5. Restore Sequence Counters (Finance & Rental)
+      // 4. Restore Sequence Counters
       const seq = parsedBackup.sequences || {};
       if (seq.loanSequence > 0) {
         await counterService.setSequenceIfHigher('loan', seq.loanSequence);
         await counterService.setSequenceIfHigher('loanSequence', seq.loanSequence);
         await counterService.setSequenceIfHigher('loanNo', seq.loanSequence);
-        console.log(`[SystemRestoreService] Synced Loan sequence counter to ${seq.loanSequence}`);
       }
       if (seq.receiptNo > 0) {
         await counterService.setSequenceIfHigher('receipt', seq.receiptNo);
         await counterService.setSequenceIfHigher('receiptNo', seq.receiptNo);
-        console.log(`[SystemRestoreService] Synced Receipt sequence counter to ${seq.receiptNo}`);
       }
       if (seq.customerId > 0) {
         await counterService.setSequenceIfHigher('customer', seq.customerId);
@@ -575,14 +785,32 @@ class SystemRestoreService {
         sync: (parsedBackup.rentalCounters?.sync || 0)
       };
       rentalRepo.writeJson('counters.json', updatedRentalCounters);
-      console.log(`[SystemRestoreService] Synced Rental sequence counters:`, updatedRentalCounters);
 
-      // 6. Record in Restore History
+      // Trigger snapshot sync to update Firestore smoothly
+      firestoreRepository.syncWithFirestore().catch(() => {});
+
+      const durationMs = Date.now() - startTime;
+      const totalProcessed = preview.counts.totalRecords;
+
+      const report = {
+        recordsRestored: totalProcessed,
+        recordsInserted: insertedCount,
+        recordsUpdated: updatedCount,
+        duplicatesSkipped: skippedCount,
+        errorsCount: 0,
+        durationMs,
+        backupSource: preview.fileName,
+        completedAt: new Date().toISOString(),
+        mode
+      };
+
+      // 5. Record in Restore History
       const historyRecord: RestoreHistoryRecord = {
         restoreId,
         backupId: preview.backupId,
         sourceFileName: preview.fileName,
         sourceType: preview.sourceType,
+        mode,
         createdAt: preview.createdAt,
         restoredAt: new Date().toISOString(),
         restoredBy: {
@@ -595,7 +823,8 @@ class SystemRestoreService {
         recordCounts: preview.counts,
         databaseStatus: 'VERIFIED',
         result: 'SUCCESS',
-        details: `Successfully restored ${preview.counts.totalRecords} total multi-domain records from ${preview.fileName} with ${preview.counts.driveReferences} Drive file references re-established.`,
+        report,
+        details: `Successfully restored ${totalProcessed} records (Mode: ${mode.toUpperCase()}, Inserted: ${insertedCount}, Skipped: ${skippedCount}, Duration: ${durationMs}ms).`,
         restore: {
           status: 'VERIFIED',
           restoreId
@@ -606,7 +835,7 @@ class SystemRestoreService {
       this.activeTokens.delete(token);
       this.isRestoreInProgress = false;
 
-      console.log(`[SystemRestoreService] ✅ Multi-domain atomic JSON restore completed successfully: ${restoreId}`);
+      console.log(`[SystemRestoreService] ✅ Database restoration completed successfully: ${restoreId} (Mode: ${mode})`);
       return historyRecord;
     } catch (err: any) {
       this.isRestoreInProgress = false;

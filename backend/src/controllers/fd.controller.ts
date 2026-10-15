@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { fdService } from '../services/fd.service.js';
 import { adminService } from '../services/admin.service.js';
+import { receiptPdfService } from '../services/receiptPdf.service.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 
 export const getFDCustomers = async (req: Request, res: Response) => {
   const customers = await fdService.getCustomersAsync();
@@ -51,8 +53,14 @@ export const createFixedDeposit = async (req: Request, res: Response) => {
 };
 
 export const payFDInterest = async (req: Request, res: Response) => {
-  const { amount, mode, dueDate, periodKey } = req.body;
-  const payout = await fdService.payInterest(req.params.fdNo, Number(amount), mode, dueDate, periodKey);
+  const { amount, mode } = req.body;
+  const user = (req as any).user;
+  const options = {
+    ...req.body,
+    actor: user ? { id: user.id || user.username, name: user.name || user.username, role: user.role } : undefined,
+    processedBy: req.body.processedBy || user?.name || user?.username
+  };
+  const payout = await fdService.payInterest(req.params.fdNo, Number(amount), mode, options);
   if (!payout) {
     return res.status(404).json({ success: false, message: `FD ${req.params.fdNo} not found` });
   }
@@ -229,3 +237,74 @@ export const updateFDConfiguration = (req: Request, res: Response) => {
     data: updatedMaster
   });
 };
+
+export const getFDReceiptPdf = async (req: Request, res: Response) => {
+  try {
+    const { fdNo } = req.params;
+    const fd = fdService.getDepositByNo(fdNo);
+    if (!fd) {
+      return res.status(404).json({ success: false, message: `Fixed Deposit ${fdNo} not found.` });
+    }
+
+    const customers = firestoreRepository.getRecords<any>('CUSTOMER');
+    const customer = customers.find((c: any) => c.id === fd.customerId || c.customerId === fd.customerId || c.phone === fd.phone);
+
+    const branchSettings = adminService.getMasterSettings()?.branchSettings;
+    const pdfBuffer = await receiptPdfService.generateFDReceiptPdfBuffer({
+      fd,
+      customer,
+      branchSettings
+    });
+
+    const filename = receiptPdfService.generateFDFilename(fd);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    return res.end(pdfBuffer);
+  } catch (err: any) {
+    console.error('[FDController] Error generating FD receipt PDF:', err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || 'Failed to generate Fixed Deposit receipt PDF.'
+    });
+  }
+};
+
+export const getFDInterestReceiptPdf = async (req: Request, res: Response) => {
+  try {
+    const identifier = req.params.voucherNumber || req.params.payoutId;
+    const payout = fdService.getPayoutByVoucherNo(identifier);
+    if (!payout) {
+      return res.status(404).json({ success: false, message: `FD Interest Payout / Voucher ${identifier} not found.` });
+    }
+
+    const targetFD = firestoreRepository.getRecordById<any>('FIXED_DEPOSIT', payout.fdNo);
+    const fd = targetFD?.data || fdService.getDepositByNo(payout.fdNo);
+
+    const customers = firestoreRepository.getRecords<any>('CUSTOMER');
+    const customer = customers.find((c: any) => c.id === payout.customerId || c.customerId === payout.customerId || c.phone === payout.customerPhone);
+
+    const branchSettings = adminService.getMasterSettings()?.branchSettings;
+    const pdfBuffer = await receiptPdfService.generateFDInterestReceiptPdfBuffer({
+      payout,
+      fd: fd || undefined,
+      customer,
+      branchSettings
+    });
+
+    const filename = receiptPdfService.generateFDInterestFilename(payout);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    return res.end(pdfBuffer);
+  } catch (err: any) {
+    console.error('[FDController] Error generating FD interest receipt PDF:', err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || 'Failed to generate Fixed Deposit interest receipt PDF.'
+    });
+  }
+};
+

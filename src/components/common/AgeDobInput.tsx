@@ -220,17 +220,18 @@ export const AgeDobInput: React.FC<AgeDobInputProps> = ({
   const currentCalcAge = mode === 'dob' ? calculateAgeFromDob(displayVal || isoVal) : null;
 
   return (
-    <div className="form-group" style={{ margin: 0 }}>
+    <div className="kyc-form-group">
       {/* Header Label + Segmented Control Toggle */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: '6px'
+          minHeight: '18px',
+          gap: '8px'
         }}
       >
-        <label className="form-label" style={{ margin: 0, fontWeight: 700, fontSize: '13px' }}>
+        <label className="kyc-field-label" style={{ margin: 0 }}>
           AGE / DATE OF BIRTH
         </label>
 
@@ -239,25 +240,26 @@ export const AgeDobInput: React.FC<AgeDobInputProps> = ({
           style={{
             display: 'inline-flex',
             backgroundColor: 'var(--bg-surface-secondary, #f1f5f9)',
-            padding: '3px',
-            borderRadius: '20px',
-            border: '1px solid var(--border-light, #cbd5e1)'
+            padding: '2px',
+            borderRadius: '16px',
+            border: '1px solid var(--border-light, #cbd5e1)',
+            flexShrink: 0
           }}
         >
           <button
             type="button"
             onClick={() => handleModeChange('dob')}
             style={{
-              padding: '3px 12px',
-              fontSize: '11.5px',
+              padding: '2px 8px',
+              fontSize: '11px',
               fontWeight: 800,
-              borderRadius: '16px',
+              borderRadius: '12px',
               border: 'none',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
               backgroundColor: mode === 'dob' ? 'var(--color-primary-accent, #059669)' : 'transparent',
               color: mode === 'dob' ? '#ffffff' : 'var(--text-muted, #64748b)',
-              boxShadow: mode === 'dob' ? '0 1px 3px rgba(0,0,0,0.15)' : 'none'
+              boxShadow: mode === 'dob' ? '0 1px 2px rgba(0,0,0,0.15)' : 'none'
             }}
           >
             DOB
@@ -266,16 +268,16 @@ export const AgeDobInput: React.FC<AgeDobInputProps> = ({
             type="button"
             onClick={() => handleModeChange('age')}
             style={{
-              padding: '3px 12px',
-              fontSize: '11.5px',
+              padding: '2px 8px',
+              fontSize: '11px',
               fontWeight: 800,
-              borderRadius: '16px',
+              borderRadius: '12px',
               border: 'none',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
               backgroundColor: mode === 'age' ? 'var(--color-primary-accent, #059669)' : 'transparent',
               color: mode === 'age' ? '#ffffff' : 'var(--text-muted, #64748b)',
-              boxShadow: mode === 'age' ? '0 1px 3px rgba(0,0,0,0.15)' : 'none'
+              boxShadow: mode === 'age' ? '0 1px 2px rgba(0,0,0,0.15)' : 'none'
             }}
           >
             AGE
@@ -296,6 +298,7 @@ export const AgeDobInput: React.FC<AgeDobInputProps> = ({
               value={displayVal}
               onChange={handleManualDobChange}
               style={{
+                height: '40px',
                 paddingRight: '40px',
                 width: '100%',
                 borderColor: inputError ? 'var(--color-danger, #ef4444)' : undefined
@@ -382,7 +385,7 @@ export const AgeDobInput: React.FC<AgeDobInputProps> = ({
             placeholder="Enter customer age"
             value={ageVal || ''}
             onChange={handleAgeChange}
-            style={{ width: '100%' }}
+            style={{ width: '100%', height: '40px' }}
           />
           <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
             Age in years (e.g. 28)

@@ -19,7 +19,13 @@ import {
 import {
   getActiveLoanTypesForIssue,
   getProductCardFeeConfig,
-  calculateLoanTerms
+  calculateLoanTerms,
+  formatInputDate,
+  formatLoanDate,
+  parseLoanDate,
+  getMaximumLoanIssueDate,
+  validateLoanIssueDate,
+  addMonthsToLoanDate
 } from '../utils/loanCalculationUtils';
 import { WebcamCapture } from '../components/common/WebcamCapture';
 import {
@@ -91,9 +97,14 @@ export const LoanIssue: React.FC = () => {
   const displayReceiptNo = nextSequence;
   const displayLoanNo = `GL-${nextSequence}`;
 
-  const currentBusinessDate = useMemo(() => {
-    return new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
+  // Loan Issue Date Limits: Maximum date is Today (any past date allowed, future dates forbidden)
+  const maxAllowedIssueDate = useMemo(() => {
+    return formatInputDate(getMaximumLoanIssueDate(new Date()));
   }, []);
+
+  const [loanIssueDate, setLoanIssueDate] = useState<string>(() => {
+    return formatInputDate(new Date());
+  });
 
   const [loanTypeId, setLoanTypeId] = useState<string>(() => activeLoanTypes[0]?.id || 'gold-loan');
   const [repaymentSystemId, setRepaymentSystemId] = useState<string>(() => activeRepaymentSystems[0]?.id || 'monthly-interest-only');
@@ -347,7 +358,7 @@ export const LoanIssue: React.FC = () => {
       advanceDays,
       customCardFeeEnabled: cardFeeEnabled,
       customCardFeeAmount: cardFeeAmount,
-      issueDate: currentBusinessDate
+      issueDate: loanIssueDate
     });
   }, [
     numericPrincipal,
@@ -358,7 +369,7 @@ export const LoanIssue: React.FC = () => {
     advanceDays,
     cardFeeEnabled,
     cardFeeAmount,
-    currentBusinessDate
+    loanIssueDate
   ]);
 
   const interestRate = loanTerms.interestRate;
@@ -655,6 +666,7 @@ export const LoanIssue: React.FC = () => {
     ]);
     setAdditionalNotes('');
     setOrnamentPhotos([]);
+    setLoanIssueDate(formatInputDate(new Date()));
     showToast('Form cleared', 'info');
   };
 
@@ -863,11 +875,18 @@ export const LoanIssue: React.FC = () => {
       }
     }
 
+    // Validate Loan Issue Date strictly (allow up to 30 days backdate, forbid future dates)
+    const issueDateValidation = validateLoanIssueDate(loanIssueDate);
+    if (!issueDateValidation.isValid) {
+      showToast(issueDateValidation.error || 'Please enter a valid loan issue date.', 'error');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      // Revalidate latest business date and allocate sequence safely
-      const finalBusinessDate = new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
+      const selectedIssueDate = issueDateValidation.parsedDate || parseLoanDate(loanIssueDate);
+      const finalIssueDateFormatted = issueDateValidation.formattedDate || formatLoanDate(selectedIssueDate);
       const finalLoanNo = displayLoanNo;
       const finalReceiptNo = displayReceiptNo;
 
@@ -964,7 +983,7 @@ export const LoanIssue: React.FC = () => {
           }
           : undefined,
         kycDocuments: (selectedCustomer as any).kycDocumentFileIds || (selectedCustomer.kycDocuments || []).map((d: any) => d.fileId || d.id || '') || [],
-        date: finalBusinessDate,
+        date: finalIssueDateFormatted,
         loanType: selectedLoanTypeConfig.name,
         loanTypeId: selectedLoanTypeConfig.id,
         loanTypeName: selectedLoanTypeConfig.name,
@@ -1017,7 +1036,7 @@ export const LoanIssue: React.FC = () => {
         netDisbursed: loanTerms.netDisbursed,
         outstandingPrincipal: numericPrincipal,
         accruedInterest: 0,
-        renewalDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB').replace(/\//g, '-'),
+        renewalDate: formatLoanDate(addMonthsToLoanDate(selectedIssueDate, 12)),
         nextDueDate: loanTerms.nextDueDate
       });
 
@@ -1094,19 +1113,30 @@ export const LoanIssue: React.FC = () => {
 
                 <div className="fi-field">
                   <div className="fi-label-sub">
-                    <label className="fi-label">Loan Issue Date <span className="fi-req">*</span></label>
-                    <span className="fi-label-badge">🔒 System Date</span>
+                    <label className="fi-label" htmlFor="loanIssueDateInput">Loan Issue Date <span className="fi-req">*</span></label>
+                    <span
+                      className="fi-label-badge"
+                      style={{
+                        backgroundColor: 'rgba(5, 150, 105, 0.1)',
+                        color: 'var(--color-primary-dark, #059669)',
+                        border: '1px solid rgba(5, 150, 105, 0.25)',
+                        fontWeight: 700
+                      }}
+                    >
+                      📅 Loan Date
+                    </span>
                   </div>
                   <input
-                    type="text"
+                    id="loanIssueDateInput"
+                    type="date"
                     className="input-control"
-                    value={currentBusinessDate}
-                    readOnly
-                    tabIndex={-1}
-                    inputMode="none"
-                    style={{ backgroundColor: 'var(--bg-surface-secondary, #f8fafc)', cursor: 'default', fontWeight: 600 }}
+                    value={loanIssueDate}
+                    max={maxAllowedIssueDate}
+                    required
+                    onChange={(e) => setLoanIssueDate(e.target.value)}
+                    style={{ fontWeight: 600, cursor: 'pointer' }}
                   />
-                  <span className="fi-hint">✓ Current business date (read-only)</span>
+                  <span className="fi-hint">✓ Select the actual loan issue date</span>
                 </div>
               </div>
 

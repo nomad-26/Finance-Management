@@ -12,8 +12,7 @@ import {
   getDefaultPermissionsForRole,
   normalizeUserPermissions
 } from '../models/User.js';
-import { telegramRepository } from '../telegram/telegram.repository.js';
-import { telegramCache } from '../telegram/telegram.cache.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 
 const MASTER_ADMIN_EMAIL = 'kkvgoldfinance13@gmail.com';
 
@@ -71,7 +70,7 @@ export class LocalAuthService {
   }
 
   /**
-   * Retrieves all users, merging local disk cache with shared Telegram storage records
+   * Retrieves all users, merging local disk cache with shared Cloud Firestore storage records
    */
   public getAllUsers(): IUser[] {
     let localUsers: IUser[] = [];
@@ -85,10 +84,10 @@ export class LocalAuthService {
       localUsers = Array.from(new Set(this.usersCache.values()));
     }
 
-    // Merge with Telegram repository (authoritative shared database)
+    // Merge with Cloud Firestore repository (authoritative shared database)
     try {
-      const telegramUsers = telegramRepository.getRecords<IUser>('USER');
-      if (telegramUsers && telegramUsers.length > 0) {
+      const firestoreUsers = firestoreRepository.getRecords<IUser>('USER');
+      if (firestoreUsers && firestoreUsers.length > 0) {
         const userList: IUser[] = [];
 
         // Helper to find existing user index in userList
@@ -112,8 +111,8 @@ export class LocalAuthService {
           }
         }
 
-        // Merge authoritative Telegram users
-        for (const tu of telegramUsers) {
+        // Merge authoritative Cloud Firestore users
+        for (const tu of firestoreUsers) {
           const idx = findIndex(tu);
           if (idx === -1) {
             userList.push(tu);
@@ -123,11 +122,11 @@ export class LocalAuthService {
             const tuHash = tu.passwordHash;
             const existingIsInitial = existing.createdByUid === 'INITIAL_SEED';
 
-            // Telegram is authoritative for shared credentials across multiple desktops
+            // Cloud Firestore is authoritative for shared credentials across multiple desktops
             let finalHash = tuHash;
             if (existingHash && existingHash.startsWith('$2')) {
               if (tuHash && tuHash.startsWith('$2')) {
-                // If local was just initial seed, always adopt authoritative Telegram hash
+                // If local was just initial seed, always adopt authoritative Cloud Firestore hash
                 if (existingIsInitial && tu.createdByUid !== 'INITIAL_SEED') {
                   finalHash = tuHash;
                 } else {
@@ -154,7 +153,7 @@ export class LocalAuthService {
         return userList;
       }
     } catch {
-      // If Telegram is currently initializing, proceed with local users
+      // If Cloud Firestore is currently initializing, proceed with local users
     }
 
     return localUsers;
@@ -205,9 +204,9 @@ export class LocalAuthService {
     });
     if (matched) return matched;
 
-    // 2. Direct lookup in Telegram repository cache
+    // 2. Direct lookup in Cloud Firestore repository cache
     try {
-      const tgMatch = telegramRepository.findRecords<IUser>(
+      const tgMatch = firestoreRepository.findRecords<IUser>(
         'USER',
         (u) =>
           Boolean(u.staffId && u.staffId.toUpperCase() === cleanUpper) ||
@@ -442,14 +441,14 @@ export class LocalAuthService {
       // Asynchronously sync canonical Admin and demo accounts in background without blocking local startup
       for (const u of users) {
         if (u.email === adminEmail || u.uid === 'uid_admin_001' || (includeDemoStaff && (u.uid === 'uid_staff_001' || u.uid === 'uid_rental_001'))) {
-          this.syncUserToTelegram(u).catch(() => {});
+          this.syncUserToFirestore(u).catch(() => {});
         }
       }
     }
   }
 
   /**
-   * Persists a user to local store and propagates to Telegram repository with synchronous read-back verification
+   * Persists a user to local store and propagates to Cloud Firestore repository with synchronous read-back verification
    */
   public async saveUser(user: IUser): Promise<IUser> {
     const users = this.getAllUsers();
@@ -492,58 +491,58 @@ export class LocalAuthService {
 
     this.persistUsers(users);
 
-    // Sync to authoritative Telegram database with read-back verification
-    await this.syncUserToTelegram(updatedUser);
+    // Sync to authoritative Cloud Firestore database with read-back verification
+    await this.syncUserToFirestore(updatedUser);
 
     return updatedUser;
   }
 
   /**
-   * Syncs user record to Telegram storage for multi-PC access and verifies read-back
+   * Syncs user record to Cloud Firestore for multi-PC access and verifies read-back
    */
-  public async syncUserToTelegram(user: IUser): Promise<void> {
+  public async syncUserToFirestore(user: IUser): Promise<void> {
     const entityId = (user.staffId || user.uid || user._id || `user_${Date.now()}`).toUpperCase().trim();
-    console.log(`[TELEGRAM_DB] USER record write started for ${entityId}`);
+    console.log(`[FIRESTORE_DB] USER record write started for ${entityId}`);
 
     try {
-      const existingTg = telegramRepository.getRecordById<IUser>('USER', entityId) ||
-        telegramRepository.findRecords<IUser>('USER', (u) =>
+      const existingUser = firestoreRepository.getRecordById<IUser>('USER', entityId) ||
+        firestoreRepository.findRecords<IUser>('USER', (u) =>
           Boolean(u.staffId && user.staffId && u.staffId.toUpperCase() === user.staffId.toUpperCase()) ||
           Boolean(u.email && user.email && u.email.toLowerCase() === user.email.toLowerCase()) ||
           Boolean(u.uid && user.uid && u.uid.toLowerCase() === user.uid.toLowerCase())
         )[0];
 
-      if (existingTg) {
-        const updateId = (existingTg as any).staffId || (existingTg as any).id || entityId;
+      if (existingUser) {
+        const updateId = (existingUser as any).staffId || (existingUser as any).id || entityId;
         try {
-          await telegramRepository.updateRecord('USER', updateId, user);
+          await firestoreRepository.updateRecord('USER', updateId, user);
         } catch {
-          await telegramRepository.createRecord('USER', entityId, user).catch(() => {});
+          await firestoreRepository.createRecord('USER', entityId, user).catch(() => {});
         }
       } else {
-        await telegramRepository.createRecord('USER', entityId, user);
+        await firestoreRepository.createRecord('USER', entityId, user);
       }
 
-      console.log(`[TELEGRAM_DB] USER record write succeeded for ${entityId}`);
+      console.log(`[FIRESTORE_DB] USER record write succeeded for ${entityId}`);
 
-    // Read-back verification
-    const readBack = telegramRepository.getRecordById<IUser>('USER', entityId) ||
-      telegramRepository.findRecords<IUser>('USER', (u) =>
-        Boolean(u.staffId && user.staffId && u.staffId.toUpperCase() === user.staffId.toUpperCase()) ||
-        Boolean(u.email && user.email && u.email.toLowerCase() === user.email.toLowerCase())
-      )[0];
+      // Read-back verification
+      const readBack = firestoreRepository.getRecordById<IUser>('USER', entityId) ||
+        firestoreRepository.findRecords<IUser>('USER', (u) =>
+          Boolean(u.staffId && user.staffId && u.staffId.toUpperCase() === user.staffId.toUpperCase()) ||
+          Boolean(u.email && user.email && u.email.toLowerCase() === user.email.toLowerCase())
+        )[0];
 
-    if(readBack) {
-      console.log(`[TELEGRAM_DB] USER read-back succeeded for ${entityId}`);
-    } else {
-      console.warn(`[TELEGRAM_DB] USER read-back notice: Record not immediately indexed for ${entityId}`);
+      if (readBack) {
+        console.log(`[FIRESTORE_DB] USER read-back succeeded for ${entityId}`);
+      } else {
+        console.warn(`[FIRESTORE_DB] USER read-back notice: Record not immediately indexed for ${entityId}`);
+      }
+    } catch (err: any) {
+      console.warn(`[FIRESTORE_DB] USER persistence note for ${entityId}:`, err?.message || err);
     }
-  } catch(err: any) {
-    console.warn(`[TELEGRAM_DB] USER persistence note for ${entityId}:`, err?.message || err);
   }
-}
 
-  public async deleteUser(identifier: string): Promise < boolean > {
+  public async deleteUser(identifier: string): Promise<boolean> {
   const clean = identifier.trim();
   const cleanLower = clean.toLowerCase();
   const cleanUpper = clean.toUpperCase();
@@ -561,7 +560,7 @@ export class LocalAuthService {
 }
 
 console.log(`[STAFF_DELETE]\nDeleting staff: ${identifier}`);
-console.log(`[TELEGRAM_DB]\nDelete started`);
+console.log(`[FIRESTORE_DB]\nDelete started`);
 
 const users = this.getAllUsers();
 const target = users.find(
@@ -612,18 +611,18 @@ if (target?.email) {
 
 for (const id of deleteIds) {
   try {
-    await telegramRepository.deleteRecord('USER', id, false);
+    await firestoreRepository.deleteRecord('USER', id, false);
   } catch {
     // Ignore not found
   }
 }
 
-console.log(`[TELEGRAM_DB]\nDelete succeeded`);
+console.log(`[FIRESTORE_DB]\nDelete succeeded`);
 
 // Read-back verification
 const readBackCheck = this.findUserByIdentifier(identifier);
 if (!readBackCheck) {
-  console.log(`[TELEGRAM_DB]\nRead-back verification: record not found`);
+  console.log(`[FIRESTORE_DB]\nRead-back verification: record not found`);
   console.log(`[STAFF_DELETE]\nDeletion completed`);
   return true;
 } else {
@@ -665,27 +664,10 @@ if (!readBackCheck) {
 
         for (const k of deleteKeys) {
           try {
-            telegramCache.deleteRecord('USER', k, true);
-            await telegramRepository.deleteRecord('USER', k, true);
+            await firestoreRepository.deleteRecord('USER', k, true);
           } catch {}
         }
       }
-    }
-
-    // Clean any remaining non-admin USER envelopes from telegramCache
-    const userTypeMap = (telegramCache as any).store?.get('USER') as Map<string, any> | undefined;
-    if (userTypeMap && typeof userTypeMap.entries === 'function') {
-      const entries = Array.from(userTypeMap.entries());
-      for (const [key, envRec] of entries) {
-        const u = (envRec as any)?.data as IUser;
-        const uEmail = (u?.email || '').trim().toLowerCase();
-        const isMaster = uEmail === adminEmail || u?.staffId === 'KKV-ADMIN-000001' || u?.uid === 'uid_admin_001';
-        if (!isMaster) {
-          userTypeMap.delete(key);
-          delete (telegramCache as any).index[`USER:${key}`];
-        }
-      }
-      telegramCache.flushToDisk('USER');
     }
 
     this.persistUsers(preservedUsers);

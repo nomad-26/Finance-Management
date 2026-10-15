@@ -5,33 +5,33 @@ import {
   TrendingUp,
   CreditCard,
   Users,
-  Eye,
-  EyeOff,
   Plus,
   FileText,
   AlertCircle,
-  LayoutDashboard,
   Receipt as ReceiptIcon,
   ArrowUpRight,
-  RefreshCw,
   AlertTriangle
 } from 'lucide-react';
-import { PageHeader, StatGrid, StatCard, Card, DataTable, StatusBadge, Button, ColumnDef } from '../components/ui';
+import { StatGrid, StatCard, Card, DataTable, StatusBadge, Button, ColumnDef } from '../components/ui';
 import { DashboardSummaryData } from '../types';
 import { apiService } from '../services/api';
 
 
 export const Dashboard: React.FC = () => {
-  const { setCurrentPage, currentUser, userRole, loans, receipts, customers } = useApp();
-  const [hideValues, setHideValues] = useState<boolean>(false);
+  const {
+    setCurrentPage,
+    loans,
+    receipts,
+    customers,
+    hideDashboardValues: hideValues,
+    dashboardRefreshTrigger
+  } = useApp();
   const [summaryData, setSummaryData] = useState<DashboardSummaryData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState<boolean>(false);
 
   const fetchDashboardData = useCallback(async (isManualRefresh = false) => {
-    if (isManualRefresh) setRefreshing(true);
-    else setLoading(true);
+    if (!isManualRefresh) setLoading(true);
     setError(null);
 
     try {
@@ -94,13 +94,18 @@ export const Dashboard: React.FC = () => {
       }
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [loans, receipts, customers]);
 
   useEffect(() => {
     fetchDashboardData();
   }, [fetchDashboardData]);
+
+  useEffect(() => {
+    if (dashboardRefreshTrigger > 0) {
+      fetchDashboardData(true);
+    }
+  }, [dashboardRefreshTrigger, fetchDashboardData]);
 
   const formatAmount = (val: number) => {
     if (hideValues) return '₹XXXXXX';
@@ -109,19 +114,6 @@ export const Dashboard: React.FC = () => {
       minimumFractionDigits: isInteger ? 0 : 2,
       maximumFractionDigits: 2
     })}`;
-  };
-
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
-  };
-
-  const getUserTitle = () => {
-    if (userRole === 'ADMIN') return 'Administrator';
-    if (userRole === 'RENTAL_STAFF') return 'Rental Manager';
-    return 'Branch Staff';
   };
 
   // ── Compute Real Trend Path Coordinates ─────────────────────────────────────
@@ -218,41 +210,6 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div className="page-content" style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-      <PageHeader
-        title={`${getGreeting()}, ${currentUser?.displayName || currentUser?.fullName || getUserTitle()}`}
-        subtitle="Real-time loan portfolio, pledge records, repayment collections, and cash balances"
-        icon={<LayoutDashboard size={18} />}
-
-        actions={
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={hideValues ? <Eye size={14} /> : <EyeOff size={14} />}
-              onClick={() => setHideValues(!hideValues)}
-            >
-              {hideValues ? 'Show Amounts' : 'Hide Amounts'}
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />}
-              onClick={() => fetchDashboardData(true)}
-              disabled={refreshing}
-            >
-              {refreshing ? 'Syncing...' : 'Refresh'}
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              icon={<Plus size={14} />}
-              onClick={() => setCurrentPage('loan-issue')}
-            >
-              + Issue Loan
-            </Button>
-          </div>
-        }
-      />
 
       {error && (
         <div

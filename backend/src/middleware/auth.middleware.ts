@@ -222,10 +222,10 @@ export function hasPermission(
   if (m === 'loans' || m === 'loan') {
     if (a === 'view') return Boolean(perms.loans?.view);
     if (a === 'create' || a === 'issue' || a === 'add') return Boolean(perms.loans?.issue);
-    if (a === 'update' || a === 'edit') return Boolean(perms.loans?.edit);
+    if (a === 'update' || a === 'edit') return upperRole === 'ADMIN' || upperRole === 'MASTER_ADMIN';
     if (a === 'close' || a === 'approve') return Boolean(perms.loans?.close);
     if (a === 'reopen') return Boolean(perms.loans?.reopen);
-    if (a === 'delete') return false; // Non-admin cannot delete loans
+    if (a === 'delete') return upperRole === 'ADMIN' || upperRole === 'MASTER_ADMIN';
     return false;
   }
 

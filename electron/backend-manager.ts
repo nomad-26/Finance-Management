@@ -137,11 +137,16 @@ export class BackendManager {
     let command: string;
     let args: string[];
 
-    // Ensure user-writable persistent storage paths
+    // Ensure complete user-writable persistent runtime directory structure
     const kkvDataDir = path.join(userDataDir, 'data');
-    const kkvUploadsDir = path.join(userDataDir, 'uploads');
-    if (!fs.existsSync(kkvDataDir)) fs.mkdirSync(kkvDataDir, { recursive: true });
-    if (!fs.existsSync(kkvUploadsDir)) fs.mkdirSync(kkvUploadsDir, { recursive: true });
+    const kkvBackupsDir = path.join(userDataDir, 'backups');
+    const kkvAttachmentsDir = path.join(userDataDir, 'attachments');
+    const kkvConfigDir = path.join(userDataDir, 'config');
+    const kkvTempDir = path.join(userDataDir, 'temp');
+
+    for (const d of [kkvDataDir, kkvBackupsDir, logDir, kkvAttachmentsDir, kkvConfigDir, kkvTempDir]) {
+      if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
+    }
 
     // Base environment
     const env: NodeJS.ProcessEnv = {
@@ -150,7 +155,12 @@ export class BackendManager {
       HOST: this.host,
       NODE_ENV: isDev ? 'development' : 'production',
       KKV_DATA_PATH: kkvDataDir,
-      LOCAL_STORAGE_PATH: kkvUploadsDir,
+      KKV_BACKUPS_PATH: kkvBackupsDir,
+      KKV_LOGS_PATH: logDir,
+      KKV_CONFIG_PATH: kkvConfigDir,
+      KKV_ATTACHMENTS_PATH: kkvAttachmentsDir,
+      KKV_TEMP_PATH: kkvTempDir,
+      LOCAL_STORAGE_PATH: kkvAttachmentsDir,
       APPDATA: process.env.APPDATA || app.getPath('appData')
     };
 
@@ -187,20 +197,42 @@ export class BackendManager {
 
       backendCwd = path.resolve(path.dirname(serverJsPath), '..');
 
-      // Load production .env from backend directory if present
+      // Candidate paths for bundled production .env
       const prodEnvCandidatePaths = [
         path.join(backendCwd, '.env'),
         path.join(resourcesPath, 'backend', '.env'),
         path.join(resourcesPath, '.env'),
         path.join(appPath, 'backend', '.env')
       ];
+
+      // 1. Load base configuration from bundled candidate
+      let bundledEnvFound: string | null = null;
       for (const envFile of prodEnvCandidatePaths) {
         if (fs.existsSync(envFile)) {
-          log(`[BACKEND] Loading config from ${envFile}`);
+          bundledEnvFound = envFile;
+          log(`[BACKEND] Loading base config from ${envFile}`);
           const parsed = this.parseDotEnv(envFile);
           Object.assign(env, parsed);
           break;
         }
+      }
+
+      // 2. Persistent user-writable configuration file in AppData (isolated from updates)
+      const persistentEnvFile = path.join(kkvConfigDir, '.env');
+      if (!fs.existsSync(persistentEnvFile) && bundledEnvFound) {
+        try {
+          fs.copyFileSync(bundledEnvFound, persistentEnvFile);
+          log(`[BACKEND] Seeded persistent config file to ${persistentEnvFile}`);
+        } catch (copyErr: any) {
+          log(`[BACKEND] Notice: Unable to seed persistent config file: ${copyErr?.message || copyErr}`);
+        }
+      }
+
+      // 3. Load persistent user configuration (highest priority for credentials)
+      if (fs.existsSync(persistentEnvFile)) {
+        log(`[BACKEND] Loading user persistent credentials from ${persistentEnvFile}`);
+        const userConfig = this.parseDotEnv(persistentEnvFile);
+        Object.assign(env, userConfig);
       }
 
       // Re-apply runtime overrides to ensure safe directory and port resolution
@@ -208,7 +240,8 @@ export class BackendManager {
       env.HOST = this.host;
       env.NODE_ENV = 'production';
       env.KKV_DATA_PATH = kkvDataDir;
-      env.LOCAL_STORAGE_PATH = kkvUploadsDir;
+      env.KKV_CONFIG_PATH = kkvConfigDir;
+      env.LOCAL_STORAGE_PATH = kkvAttachmentsDir;
       env.ELECTRON_RUN_AS_NODE = '1';
 
       command = process.execPath;

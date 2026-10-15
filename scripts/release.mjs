@@ -7,7 +7,7 @@
  */
 
 import { execSync, spawnSync } from 'child_process';
-import { rmSync, existsSync, mkdirSync, readdirSync, statSync, readFileSync } from 'fs';
+import { rmSync, existsSync, mkdirSync, readdirSync, statSync, readFileSync, copyFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -195,6 +195,23 @@ if (process.platform === 'win32' && existsSync(expectedExe)) {
   }
 }
 
+// ── Mirror to release/ folder for standard deployment ─────────────────────────
+const releaseDir = join(ROOT, 'release');
+if (!existsSync(releaseDir)) {
+  mkdirSync(releaseDir, { recursive: true });
+}
+if (existsSync(expectedExe)) {
+  copyFileSync(expectedExe, join(releaseDir, `KKV-Gold-Finance-Setup-${VERSION}.exe`));
+  ok('RELEASE', `Installer copied to release/KKV-Gold-Finance-Setup-${VERSION}.exe`);
+}
+if (existsSync(expectedZip)) {
+  copyFileSync(expectedZip, join(releaseDir, `KKV-Gold-Finance-Setup-${VERSION}.zip`));
+  ok('RELEASE', `ZIP distribution copied to release/KKV-Gold-Finance-Setup-${VERSION}.zip`);
+}
+if (existsSync(expectedLatest)) {
+  copyFileSync(expectedLatest, join(releaseDir, 'latest.yml'));
+}
+
 sep();
 if (allOk) {
   console.log('\x1b[32m');
@@ -202,7 +219,8 @@ if (allOk) {
   console.log(`║  ✅  KKV Gold Finance v${VERSION} — BUILD SUCCESSFUL       ║`);
   console.log('╠══════════════════════════════════════════════════════════╣');
   console.log(`║  Installer:  KKV-Gold-Finance-Setup-${VERSION}.exe        ║`);
-  console.log(`║  Location:   dist-package/                               ║`);
+  console.log(`║  Output 1:   dist-package/                               ║`);
+  console.log(`║  Output 2:   release/                                    ║`);
   console.log(`║  Version:    ${VERSION}                                      ║`);
   console.log('╚══════════════════════════════════════════════════════════╝');
   console.log('\x1b[0m');

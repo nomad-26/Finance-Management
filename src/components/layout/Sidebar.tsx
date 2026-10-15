@@ -37,6 +37,7 @@ export const Sidebar: React.FC = () => {
     toggleDarkMode,
     isMobileMenuOpen,
     closeMobileMenu,
+    isSidebarCollapsed,
     userRole,
     currentUser,
     hasPermission,
@@ -156,7 +157,7 @@ export const Sidebar: React.FC = () => {
           aria-label="Close menu"
         />
       )}
-      <aside className={`sidebar ${isMobileMenuOpen ? 'mobile-open' : ''}`}>
+      <aside className={`sidebar ${isSidebarCollapsed ? 'collapsed' : ''} ${isMobileMenuOpen ? 'mobile-open' : ''}`}>
         {/* Brand Header */}
         <div
           className="sidebar-brand"
@@ -604,7 +605,7 @@ export const Sidebar: React.FC = () => {
         </nav>
 
         {/* Footer Controls */}
-        <div className="sidebar-footer" style={{ padding: '10px 10px 14px', display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid var(--border-subtle)' }}>
+        <div className="sidebar-footer" style={{ padding: '10px 10px 14px', display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid var(--border-subtle)', flexShrink: 0, marginTop: 'auto' }}>
           <button
             className="btn btn-secondary"
             style={{ width: '100%', justifyContent: 'center', gap: '7px', fontSize: '12.5px', padding: '7px 12px', height: '34px' }}

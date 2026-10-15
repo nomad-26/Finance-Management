@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Customer,
   FixedDeposit,
@@ -8,7 +8,6 @@ import {
   DayBookEntry,
   MasterControlSettings,
   WhatsAppTemplates,
-  TelegramConfig,
   FDCustomer,
   FDInterestPayout,
   FDWithdrawal,
@@ -41,6 +40,7 @@ import { generateAllNotifications } from '../utils/notificationUtils';
 import { calculateNextDueDate, parseLoanDate, formatLoanDate, addMonthsToLoanDate } from '../utils/loanCalculationUtils';
 import { calculateFDInterestSchedule, normalizeDateString, calculateInterestPeriodKey, formatFDDate, addCalendarMonths } from '../utils/fdInterestUtils';
 import { rentalApi } from '../modules/rental/services/rentalApi';
+import { dataMigrationService } from '../services/dataMigration';
 
 interface Toast {
   id: string;
@@ -274,14 +274,6 @@ const defaultWhatsAppTemplates: WhatsAppTemplates = {
   receiptMessage: 'Dear {name}, payment receipt #{billNo} of ₹{amount} for loan {loanId} has been successfully recorded on {date}. Thank you, {bankName}.'
 };
 
-const defaultTelegramConfig: TelegramConfig = {
-  botToken: '123456789:ABCdef...',
-  chatId: '',
-  isSecured: false,
-  autoBackupOnOpen: false,
-  lastBackupDate: '25/08/2026, 15:12:11'
-};
-
 interface AppContextType {
   currentPage: NavPage;
   setCurrentPage: (page: NavPage) => void;
@@ -328,6 +320,8 @@ interface AppContextType {
   setSelectedLoan: (loan: Loan | null) => void;
   selectedReceipt: Receipt | null;
   setSelectedReceipt: (receipt: Receipt | null) => void;
+  selectedFDReceipt: FixedDeposit | null;
+  setSelectedFDReceipt: (fd: FixedDeposit | null) => void;
   masterControlOpen: boolean;
   setMasterControlOpen: (open: boolean) => void;
   masterControlUnlocked: boolean;
@@ -365,11 +359,11 @@ interface AppContextType {
   updateFDInterestRate: (newRate: number, effectiveFrom: string, notes?: string) => boolean;
   whatsAppTemplates: WhatsAppTemplates;
   updateWhatsAppTemplates: (templates: Partial<WhatsAppTemplates>) => void;
-  telegramConfig: TelegramConfig;
-  updateTelegramConfig: (config: Partial<TelegramConfig>) => void;
 
   getCustomerById: (id: string) => Customer | undefined;
   addLoan: (loan: Omit<Loan, 'id' | 'loanNo'> & { loanNo?: string; receiptBillNo?: number }) => Loan;
+  updateLoan: (id: string, updates: any) => Promise<{ success: boolean; message?: string; data?: any }>;
+  deleteLoan: (id: string, reason: string) => Promise<{ success: boolean; message?: string }>;
   addReceipt: (receipt: Omit<Receipt, 'id' | 'receiptNo'>) => Receipt;
   addFixedDeposit: (fd: Omit<FixedDeposit, 'id' | 'fdNo'>) => FixedDeposit;
   addFDCustomer: (cust: Omit<FDCustomer, 'id' | 'createdAt'>) => FDCustomer;
@@ -379,7 +373,13 @@ interface AppContextType {
   restoreCustomer: (id: string) => boolean;
   deleteCustomerPermanently: (id: string) => Promise<boolean>;
   addDayBookEntry: (entry: Omit<DayBookEntry, 'id' | 'time' | 'cashBal' | 'bankBal'>) => DayBookEntry;
-  payFDInterest: (fdNo: string, mode: 'Cash' | 'Bank' | 'UPI' | string, amount?: number, targetDueDate?: string, targetPeriodKey?: string) => boolean;
+  payFDInterest: (
+    fdNo: string,
+    mode: 'Cash' | 'Bank' | 'UPI' | string,
+    amount?: number,
+    targetDueDateOrOptions?: string | any,
+    targetPeriodKey?: string
+  ) => FDInterestPayout | null;
   withdrawFD: (fdNo: string, mode: 'Cash' | 'Bank' | 'UPI', notes?: string, withdrawalAmount?: number, transactionReference?: string, bankName?: string) => FDWithdrawal | null;
   renewFD: (fdNo: string, periodMonths: number, notes?: string) => boolean;
   fdRenewals: FDRenewal[];
@@ -391,6 +391,9 @@ interface AppContextType {
   setIsMobileMenuOpen: (open: boolean) => void;
   toggleMobileMenu: () => void;
   closeMobileMenu: () => void;
+  isSidebarCollapsed: boolean;
+  setIsSidebarCollapsed: (collapsed: boolean | ((prev: boolean) => boolean)) => void;
+  toggleSidebar: () => void;
   showToast: (message: string, type?: 'success' | 'info' | 'warning' | 'error') => void;
   toasts: Toast[];
   removeToast: (id: string) => void;
@@ -420,6 +423,12 @@ interface AppContextType {
   toggleNotificationOpen: () => void;
   markNotificationAsRead: (id: string) => void;
   markAllNotificationsAsRead: () => void;
+
+  // Shared Dashboard Toolbar Actions
+  hideDashboardValues: boolean;
+  setHideDashboardValues: React.Dispatch<React.SetStateAction<boolean>>;
+  dashboardRefreshTrigger: number;
+  triggerDashboardRefresh: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -540,9 +549,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentPage, setCurrentPageRaw] = useState<NavPage>(resolveInitialPage);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('kkv_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   const toggleMobileMenu = () => setIsMobileMenuOpen(prev => !prev);
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
+
+  const toggleSidebar = useCallback(() => {
+    if (typeof window !== 'undefined' && window.innerWidth <= 1024) {
+      setIsMobileMenuOpen(prev => !prev);
+    } else {
+      setIsSidebarCollapsed(prev => {
+        const next = !prev;
+        try {
+          localStorage.setItem('kkv_sidebar_collapsed', String(next));
+        } catch {}
+        return next;
+      });
+    }
+  }, []);
+
+  // Auto-close mobile drawer when window resizes to desktop width
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 1024 && isMobileMenuOpen) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isMobileMenuOpen]);
+
+  // Keyboard shortcut Ctrl+B or Cmd+B to toggle sidebar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        const target = e.target as HTMLElement;
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+          return;
+        }
+        e.preventDefault();
+        toggleSidebar();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleSidebar]);
 
   const setCurrentPage = (page: NavPage) => {
     const targetPage: NavPage = ((page as any) === 'backup-restore' || (page as any) === 'backup' || (page as any) === 'restore') ? 'admin-panel' : page;
@@ -677,7 +734,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return DEFAULT_BRANCH_SETTINGS;
   });
   const [whatsAppTemplates, setWhatsAppTemplates] = useState<WhatsAppTemplates>(() => getStored('waTemplates', defaultWhatsAppTemplates));
-  const [telegramConfig, setTelegramConfig] = useState<TelegramConfig>(() => getStored('tgConfig', defaultTelegramConfig));
+
+  // Shared Dashboard Toolbar Actions
+  const [hideDashboardValues, setHideDashboardValues] = useState<boolean>(false);
+  const [dashboardRefreshTrigger, setDashboardRefreshTrigger] = useState<number>(0);
+  const triggerDashboardRefresh = useCallback(() => {
+    setDashboardRefreshTrigger((prev) => prev + 1);
+  }, []);
 
   const [selectedLoan, setSelectedLoanRaw] = useState<Loan | null>(null);
   const setSelectedLoan = (loan: Loan | null) => {
@@ -710,6 +773,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sessionStorage.removeItem('kkv_selected_receipt_no');
         const url = new URL(window.location.href);
         url.searchParams.delete('receiptNo');
+        window.history.replaceState({}, '', url.toString());
+      }
+    } catch (e) {}
+  };
+
+  const [selectedFDReceipt, setSelectedFDReceiptRaw] = useState<FixedDeposit | null>(null);
+  const setSelectedFDReceipt = (fd: FixedDeposit | null) => {
+    setSelectedFDReceiptRaw(fd);
+    try {
+      if (fd?.fdNo) {
+        sessionStorage.setItem('kkv_selected_fd_no', fd.fdNo);
+        const url = new URL(window.location.href);
+        url.searchParams.set('fdNo', fd.fdNo);
+        window.history.replaceState({}, '', url.toString());
+      } else {
+        sessionStorage.removeItem('kkv_selected_fd_no');
+        const url = new URL(window.location.href);
+        url.searchParams.delete('fdNo');
         window.history.replaceState({}, '', url.toString());
       }
     } catch (e) {}
@@ -829,11 +910,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => { safeSetStored('read_notification_ids', readNotificationIds); }, [readNotificationIds]);
   useEffect(() => { safeSetStored('masterSettings', masterControlSettings); }, [masterControlSettings]);
   useEffect(() => { safeSetStored('waTemplates', whatsAppTemplates); }, [whatsAppTemplates]);
-  useEffect(() => { safeSetStored('tgConfig', telegramConfig); }, [telegramConfig]);
   useEffect(() => { safeSetStored('userRole', userRole); }, [userRole]);
   useEffect(() => { safeSetStored('currentUser', currentUser); }, [currentUser]);
 
   // Sync document theme class — toggles dark-mode and light-mode classes on body and documentElement
+  useEffect(() => {
+    // Perform safe, idempotent background migration to Cloud Firestore
+    dataMigrationService.migrateLocalDataToFirestore().catch(err => {
+      console.warn('[AppContext] Firestore background migration notice:', err);
+    });
+  }, []);
+
   useEffect(() => {
     if (darkMode) {
       document.body.classList.add('dark-mode');
@@ -904,8 +991,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (isAdmin) {
         promises.push(apiService.getWhatsAppTemplates());
         fetchKeys.push('waTemplates');
-        promises.push(apiService.getTelegramConfig());
-        fetchKeys.push('tgConfig');
       }
 
       const results = await Promise.allSettled(promises);
@@ -950,9 +1035,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           } else if (key === 'waTemplates' && val) {
             const waData = (val && typeof val === 'object' && val.data) ? val.data : val;
             if (waData && typeof waData === 'object') setWhatsAppTemplates(waData);
-          } else if (key === 'tgConfig' && val) {
-            const tgData = (val && typeof val === 'object' && val.data) ? val.data : val;
-            if (tgData && typeof tgData === 'object') setTelegramConfig(tgData);
+
           }
         }
       });
@@ -2242,15 +2325,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('WhatsApp templates saved!', 'success');
   };
 
-  const updateTelegramConfig = (newCfg: Partial<TelegramConfig>) => {
-    setTelegramConfig(prev => {
-      const updated = { ...prev, ...newCfg };
-      apiService.updateTelegramConfig(updated).catch(e => console.error(e));
-      return updated;
-    });
-    showToast('Telegram configuration saved!', 'success');
-  };
-
   const getCustomerById = (id: string): Customer | undefined => {
     return customers.find(c => c.id === id || (c.customerId && c.customerId.toString() === id));
   };
@@ -2440,6 +2514,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newLoan;
   };
 
+  const updateLoan = async (id: string, updates: any): Promise<{ success: boolean; message?: string; data?: any }> => {
+    if (userRole !== 'ADMIN') {
+      showToast('Permission denied. Only an Admin can edit loan details.', 'error');
+      return { success: false, message: 'Permission denied. Only an Admin can edit loan details.' };
+    }
+    try {
+      const res = await apiService.updateLoan(id, updates);
+      if (res.success) {
+        showToast(res.message || `Loan ${res.data?.loanNo || id} updated successfully!`, 'success');
+        await reloadAllData();
+        return { success: true, data: res.data, message: res.message };
+      } else {
+        showToast(res.message || 'Failed to update loan.', 'error');
+        return { success: false, message: res.message };
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Error updating loan.', 'error');
+      return { success: false, message: err.message };
+    }
+  };
+
+  const deleteLoan = async (id: string, reason: string): Promise<{ success: boolean; message?: string }> => {
+    if (userRole !== 'ADMIN') {
+      showToast('Permission denied. Only an Admin can delete a loan.', 'error');
+      return { success: false, message: 'Permission denied. Only an Admin can delete a loan.' };
+    }
+    if (!reason || !reason.trim()) {
+      showToast('A deletion or cancellation reason is required.', 'warning');
+      return { success: false, message: 'A deletion or cancellation reason is required.' };
+    }
+    try {
+      const res = await apiService.deleteLoan(id, reason.trim());
+      if (res.success) {
+        showToast(res.message || 'Loan deleted successfully.', 'success');
+        await reloadAllData();
+        return { success: true, message: res.message };
+      } else {
+        showToast(res.message || 'Failed to delete loan.', 'error');
+        return { success: false, message: res.message };
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Error deleting loan.', 'error');
+      return { success: false, message: err.message };
+    }
+  };
+
   const addReceipt = (receiptData: Omit<Receipt, 'id' | 'receiptNo'>): Receipt => {
     const maxExisting = receipts.length > 0 ? Math.max(...receipts.map((r) => r.receiptNo || 0)) : 0;
     const storedSeq = getStored('last_receipt_sequence', 0);
@@ -2531,11 +2651,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return num > max ? num : max;
     }, 0);
     const nextNumber = maxSeq + 1;
-    const fdNo = `FD-${nextNumber.toString().padStart(2, '0')}`;
+    const fdNo = `FD-${nextNumber.toString().padStart(4, '0')}`;
+
+    // Auto-generate or preserve sequential receiptNumber
+    const maxRcptSeq = fixedDeposits.reduce((max, f) => {
+      const rStr = f.receiptNumber || '';
+      const match = rStr.match(/(\d+)$/);
+      const num = match ? parseInt(match[1], 10) : 0;
+      return num > max ? num : max;
+    }, 0);
+    const nextRcptNumber = Math.max(nextNumber, maxRcptSeq + 1);
+    const receiptNumber = fdData.receiptNumber || `FD-RCPT-${nextRcptNumber.toString().padStart(4, '0')}`;
+    const receiptGeneratedAt = fdData.receiptGeneratedAt || new Date().toISOString();
+
     const newFd: FixedDeposit = {
       ...fdData,
       id: `FD-${Date.now()}`,
       fdNo,
+      receiptNumber,
+      receiptGeneratedAt,
       remainingPrincipal: fdData.remainingPrincipal ?? fdData.principal,
       totalWithdrawnPrincipal: fdData.totalWithdrawnPrincipal ?? 0,
 
@@ -2579,7 +2713,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn('[AppContext] Backend FD creation warning:', err);
     });
 
-    showToast(`Fixed Deposit ${fdNo} issued successfully!`, 'success');
+    showToast(`Fixed Deposit ${fdNo} (Receipt #${receiptNumber}) issued successfully!`, 'success');
     return newFd;
   };
 
@@ -2606,10 +2740,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Phone normalization utility
     const normPhone = custData.phone ? custData.phone.replace(/\D/g, '').slice(-10) : '';
 
-    // Check unique mobile number constraint among active (non-deleted) customers
-    const existing = customers.find(c => !c.isDeleted && (c.phoneNormalized === normPhone || c.phone.replace(/\D/g, '').slice(-10) === normPhone));
+    // Check unique mobile number constraint among active (non-deleted) customers only
+    const existing = customers.find(c => !Boolean(c.isDeleted) && (c.phoneNormalized === normPhone || c.phone.replace(/\D/g, '').slice(-10) === normPhone));
     if (existing) {
-      showToast('This mobile number is already registered to an existing customer.', 'error');
+      showToast('This mobile number is already registered to an existing active customer.', 'error');
       throw new Error('DUPLICATE_PHONE_NUMBER');
     }
 
@@ -2654,6 +2788,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateCustomer = (id: string, updates: Partial<Customer>): Customer | null => {
+    if (updates.phone) {
+      const normPhone = updates.phone.replace(/\D/g, '').slice(-10);
+      if (normPhone) {
+        const duplicate = customers.find(
+          (c) =>
+            c.id !== id &&
+            (c.customerId ? c.customerId.toString() !== id : true) &&
+            !Boolean(c.isDeleted) &&
+            ((c.phoneNormalized && c.phoneNormalized === normPhone) ||
+              (c.phone && c.phone.replace(/\D/g, '').slice(-10) === normPhone))
+        );
+        if (duplicate) {
+          showToast(`This mobile number is already registered to customer ${duplicate.name} (${duplicate.id}).`, 'error');
+          throw new Error('DUPLICATE_PHONE_NUMBER');
+        }
+      }
+    }
+
     let updatedCust: Customer | null = null;
 
     setCustomers((prev) => {
@@ -2673,7 +2825,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     if (updatedCust) {
-      apiService.updateCustomer(id, updates).catch((err) => {
+      apiService.updateCustomer(id, updates).then(() => {
+        reloadAllData().catch(() => {});
+      }).catch((err) => {
         console.warn('[AppContext] Customer backend update sync warning:', err);
       });
       showToast(`Customer ${updates.name || id} updated successfully!`, 'success');
@@ -2696,11 +2850,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((c) => (c.id === id ? { ...c, isDeleted: true, deletedAt: new Date().toISOString(), deletedBy: 'ADMIN' } : c))
     );
 
-    apiService.deleteCustomer(id).catch((err) => {
+    apiService.deleteCustomer(id).then(() => {
+      reloadAllData().catch(() => {});
+    }).catch((err) => {
       console.warn('[AppContext] Customer backend delete sync warning:', err);
     });
 
-    showToast(`Customer ${targetCust.name} (${targetCust.id}) soft-deleted successfully.`, 'success');
+    showToast(`Customer ${targetCust.name} (${targetCust.id}) moved to Deleted Customers.`, 'success');
     return true;
   };
 
@@ -2718,7 +2874,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((c) => (c.id === id ? { ...c, isDeleted: false, deletedAt: null, deletedBy: null } : c))
     );
 
-    apiService.restoreCustomer(id).catch((err) => {
+    apiService.restoreCustomer(id).then(() => {
+      reloadAllData().catch(() => {});
+    }).catch((err) => {
       console.warn('[AppContext] Customer backend restore sync warning:', err);
     });
 
@@ -2740,67 +2898,124 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const custId = targetCust.id;
     const numericCustIdStr = targetCust.customerId ? targetCust.customerId.toString() : '';
+    const targetNormPhone = (targetCust.phoneNormalized || targetCust.phone || '').replace(/\D/g, '').slice(-10);
 
     try {
-      await apiService.deleteCustomerPermanently(id);
+      const res = await apiService.deleteCustomerPermanently(id);
+      if (res && (res as any).success === false) {
+        throw new Error((res as any).message || 'Permanent customer deletion failed on backend.');
+      }
     } catch (err: any) {
-      console.warn('[AppContext] Customer backend permanent deletion sync warning:', err);
+      console.error('[AppContext] Customer backend permanent deletion failed:', err);
+      showToast(err?.message || 'Failed to permanently delete customer from storage.', 'error');
+      return false;
     }
 
-    // 1. Remove customer record permanently
-    setCustomers((prev) =>
-      prev.filter((c) => c.id !== custId && (numericCustIdStr ? c.customerId?.toString() !== numericCustIdStr : true))
+    // 1. Remove customer record permanently from active and deleted state
+    const nextCustomers = customers.filter(
+      (c) => c.id !== custId && (numericCustIdStr ? c.customerId?.toString() !== numericCustIdStr : true)
     );
+    setCustomers(nextCustomers);
+    safeSetStored('customers', nextCustomers);
 
     // 2. Cascade delete loans
     const deletedLoanNos = new Set<string>();
     const deletedLoanIds = new Set<string>();
 
     loans.forEach((l) => {
-      if (l.customerId === custId || (numericCustIdStr && l.customerId === numericCustIdStr)) {
+      if (
+        l.customerId === custId ||
+        (numericCustIdStr && l.customerId === numericCustIdStr) ||
+        (targetNormPhone && l.customerPhone && l.customerPhone.replace(/\D/g, '').slice(-10) === targetNormPhone)
+      ) {
         deletedLoanNos.add(l.loanNo);
         deletedLoanIds.add(l.id);
       }
     });
 
-    setLoans((prev) =>
-      prev.filter((l) => l.customerId !== custId && (numericCustIdStr ? l.customerId !== numericCustIdStr : true))
+    const nextLoans = loans.filter(
+      (l) =>
+        l.customerId !== custId &&
+        (numericCustIdStr ? l.customerId !== numericCustIdStr : true) &&
+        !deletedLoanNos.has(l.loanNo) &&
+        !deletedLoanIds.has(l.id)
     );
+    setLoans(nextLoans);
+    safeSetStored('loans', nextLoans);
 
     // 3. Cascade delete receipts
-    setReceipts((prev) =>
-      prev.filter(
-        (r) =>
-          r.customerId !== custId &&
-          (numericCustIdStr ? r.customerId !== numericCustIdStr : true) &&
-          !deletedLoanNos.has(r.loanNo) &&
-          !deletedLoanIds.has(r.loanId)
-      )
+    const nextReceipts = receipts.filter(
+      (r) =>
+        r.customerId !== custId &&
+        (numericCustIdStr ? r.customerId !== numericCustIdStr : true) &&
+        !deletedLoanNos.has(r.loanNo) &&
+        !deletedLoanIds.has(r.loanId)
     );
+    setReceipts(nextReceipts);
+    safeSetStored('receipts', nextReceipts);
 
     // 4. Cascade delete daybook entries
-    setDayBookEntries((prev) =>
-      prev.filter(
-        (d) =>
-          (d.customerName ? d.customerName !== targetCust.name : true) &&
-          (d.loanNo ? !deletedLoanNos.has(d.loanNo) : true)
-      )
+    const nextDayBookEntries = dayBookEntries.filter(
+      (d) =>
+        (d.customerName ? d.customerName.toLowerCase() !== targetCust.name.toLowerCase() : true) &&
+        (d.loanNo ? !deletedLoanNos.has(d.loanNo) : true)
     );
+    setDayBookEntries(nextDayBookEntries);
+    safeSetStored('dayBookEntries', nextDayBookEntries);
 
     // 5. Cascade delete fixed deposits, interest payouts, and withdrawals
     const deletedFdNos = new Set<string>();
     fixedDeposits.forEach((f) => {
-      if (f.customerId === custId || (numericCustIdStr && f.customerId === numericCustIdStr)) {
+      if (
+        f.customerId === custId ||
+        (numericCustIdStr && f.customerId === numericCustIdStr) ||
+        (targetNormPhone && f.phone && f.phone.replace(/\D/g, '').slice(-10) === targetNormPhone)
+      ) {
         deletedFdNos.add(f.fdNo);
       }
     });
 
-    setFixedDeposits((prev) =>
-      prev.filter((f) => f.customerId !== custId && (numericCustIdStr ? f.customerId !== numericCustIdStr : true))
+    const nextFDs = fixedDeposits.filter(
+      (f) =>
+        f.customerId !== custId &&
+        (numericCustIdStr ? f.customerId !== numericCustIdStr : true) &&
+        !deletedFdNos.has(f.fdNo)
     );
-    setFdInterestPayouts((prev) => prev.filter((p) => !deletedFdNos.has(p.fdNo)));
-    setFdWithdrawals((prev) => prev.filter((w) => !deletedFdNos.has(w.fdNo)));
-    setFdRenewals((prev) => prev.filter((r) => !deletedFdNos.has(r.fdNo)));
+    setFixedDeposits(nextFDs);
+    safeSetStored('fixedDeposits', nextFDs);
+
+    const nextFdCusts = fdCustomers.filter(
+      (fc) =>
+        fc.id !== custId &&
+        (numericCustIdStr ? fc.id !== numericCustIdStr && (fc as any).customerId !== numericCustIdStr : true) &&
+        (targetNormPhone ? fc.phone?.replace(/\D/g, '').slice(-10) !== targetNormPhone : true)
+    );
+    setFdCustomers(nextFdCusts);
+    safeSetStored('fdCustomers', nextFdCusts);
+
+    const nextPayouts = fdInterestPayouts.filter((p) => !deletedFdNos.has(p.fdNo));
+    setFdInterestPayouts(nextPayouts);
+    safeSetStored('fdInterestPayouts', nextPayouts);
+
+    const nextWithdrawals = fdWithdrawals.filter((w) => !deletedFdNos.has(w.fdNo));
+    setFdWithdrawals(nextWithdrawals);
+    safeSetStored('fdWithdrawals', nextWithdrawals);
+
+    const nextRenewals = fdRenewals.filter((r) => !deletedFdNos.has(r.fdNo));
+    setFdRenewals(nextRenewals);
+    safeSetStored('fdRenewals', nextRenewals);
+
+    // 6. Clear local storage draft if any
+    try {
+      localStorage.removeItem('kkv_kyc_draft');
+    } catch {}
+
+    // 7. Refresh all backend authoritative data
+    try {
+      await reloadAllData();
+    } catch (reloadErr) {
+      console.warn('[AppContext] reloadAllData post-deletion notice:', reloadErr);
+    }
 
     showToast('Customer and all associated records have been permanently deleted successfully.', 'success');
     return true;
@@ -2825,24 +3040,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fdNo: string,
     mode: 'Cash' | 'Bank' | 'UPI' | string,
     amount?: number,
-    targetDueDate?: string,
+    targetDueDateOrOptions?: string | any,
     targetPeriodKey?: string
-  ): boolean => {
+  ): FDInterestPayout | null => {
     const targetFD = fixedDeposits.find((f) => f.fdNo === fdNo || f.id === fdNo);
     if (!targetFD) {
       showToast('Fixed Deposit record not found.', 'error');
-      return false;
+      return null;
     }
 
     if (targetFD.status === 'WITHDRAWN') {
       showToast('This Fixed Deposit is closed and cannot receive interest payouts.', 'error');
-      return false;
+      return null;
     }
 
     const schedule = calculateFDInterestSchedule(targetFD, fdInterestPayouts);
 
-    const dueDateToPay = targetDueDate ? normalizeDateString(targetDueDate) : schedule.nextPayoutDate;
-    const periodKeyToPay = targetPeriodKey || calculateInterestPeriodKey(targetFD.fdNo, dueDateToPay);
+    let dueDateToPay: string | undefined;
+    let periodKeyToPay: string | undefined;
+    let paymentDate: string | undefined;
+    let startDate: string | undefined;
+    let periodLabel: string | undefined;
+    let bankName: string | undefined;
+    let transactionReference: string | undefined;
+    let upiId: string | undefined;
+    let remarks: string | undefined;
+    let processedBy: string | undefined;
+    let earnedInterest: number | undefined;
+    let pendingInterestBefore: number | undefined;
+    let pendingInterestAfter: number | undefined;
+
+    if (typeof targetDueDateOrOptions === 'object' && targetDueDateOrOptions !== null) {
+      dueDateToPay = targetDueDateOrOptions.dueDate ? normalizeDateString(targetDueDateOrOptions.dueDate) : schedule.nextPayoutDate;
+      periodKeyToPay = targetDueDateOrOptions.periodKey || targetPeriodKey || calculateInterestPeriodKey(targetFD.fdNo, dueDateToPay);
+      paymentDate = targetDueDateOrOptions.paymentDate || targetDueDateOrOptions.date;
+      startDate = targetDueDateOrOptions.startDate;
+      periodLabel = targetDueDateOrOptions.periodLabel;
+      bankName = targetDueDateOrOptions.bankName;
+      transactionReference = targetDueDateOrOptions.transactionReference;
+      upiId = targetDueDateOrOptions.upiId;
+      remarks = targetDueDateOrOptions.remarks;
+      processedBy = targetDueDateOrOptions.processedBy;
+      earnedInterest = targetDueDateOrOptions.earnedInterest;
+      pendingInterestBefore = targetDueDateOrOptions.pendingInterestBefore;
+      pendingInterestAfter = targetDueDateOrOptions.pendingInterestAfter;
+    } else {
+      dueDateToPay = targetDueDateOrOptions ? normalizeDateString(targetDueDateOrOptions) : schedule.nextPayoutDate;
+      periodKeyToPay = targetPeriodKey || calculateInterestPeriodKey(targetFD.fdNo, dueDateToPay);
+    }
 
     // Check duplicate period key
     const duplicate = fdInterestPayouts.some(
@@ -2854,24 +3099,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (duplicate) {
       showToast('This interest period has already been paid.', 'error');
-      return false;
+      return null;
     }
 
-    const todayStr = new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
+    const todayStr = paymentDate || new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
     const payoutAmount = amount && amount > 0 ? amount : schedule.payoutAmount;
+
+    // Optimistically compute next voucher sequence
+    const existingIntVouchers = fdInterestPayouts
+      .map((p) => {
+        const match = p.voucherNumber?.match(/(\d+)$/);
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter((n) => !isNaN(n));
+    const nextVoucherSeq = existingIntVouchers.length > 0 ? Math.max(...existingIntVouchers) + 1 : 1;
+    const voucherNumber = `INT-RCPT-${String(nextVoucherSeq).padStart(4, '0')}`;
+    const voucherGeneratedAt = new Date().toISOString();
 
     const payout: FDInterestPayout = {
       id: `fd-payout-${Date.now()}`,
+      payoutId: `fd-payout-${Date.now()}`,
+      voucherNumber,
+      voucherGeneratedAt,
       fdId: targetFD.id,
       fdNo: targetFD.fdNo,
       customerId: targetFD.customerId,
       depositorName: targetFD.depositorName,
+      customerPhone: targetFD.phone,
+      customerAddress: targetFD.address,
+      principalAtPayment: targetFD.remainingPrincipal ?? targetFD.principal,
+      interestRatePA: targetFD.interestRatePA,
+      monthlyPayout: targetFD.monthlyPayout,
+      tenureMonths: targetFD.tenureMonths,
       amount: payoutAmount,
       date: todayStr,
       dueDate: dueDateToPay,
+      startDate,
       periodKey: periodKeyToPay,
+      periodLabel: periodLabel || `Interest up to ${dueDateToPay}`,
+      earnedInterest: earnedInterest ?? payoutAmount,
+      pendingInterestBefore,
+      pendingInterestAfter: pendingInterestAfter !== undefined ? pendingInterestAfter : Math.max(0, (pendingInterestBefore ?? payoutAmount) - payoutAmount),
       mode: mode as any,
-      status: 'PAID'
+      bankName,
+      transactionReference,
+      upiId,
+      remarks,
+      processedBy: processedBy || 'Admin',
+      status: 'PAID',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
 
     setFdInterestPayouts((prev) => [payout, ...prev]);
@@ -2882,9 +3159,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const dbEntry: DayBookEntry = {
       id: `db-${Date.now()}`,
       time: timeStr,
-      billNo: `INT-${targetFD.fdNo}`,
-      particulars: `FD Interest Payout (${targetFD.fdNo}) - ${targetFD.depositorName} (${dueDateToPay})`,
-      accountHead: 'Interest Expense',
+      billNo: voucherNumber,
+      particulars: `FD Interest Payout (${targetFD.fdNo}) - ${targetFD.depositorName} [Voucher: ${voucherNumber}]`,
+      accountHead: 'Interest Paid',
       mode: mode as any,
       cashIn: 0,
       cashOut: isCash ? payoutAmount : 0,
@@ -2899,14 +3176,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDayBookEntries((prev) => [dbEntry, ...prev]);
 
     // Authoritative backend persistence & sync
-    apiService.payFDInterest(targetFD.fdNo, payoutAmount, mode, dueDateToPay, periodKeyToPay).then(() => {
+    const backendPayload = typeof targetDueDateOrOptions === 'object' && targetDueDateOrOptions !== null
+      ? { ...targetDueDateOrOptions, amount: payoutAmount, mode, dueDate: dueDateToPay, periodKey: periodKeyToPay, voucherNumber }
+      : { amount: payoutAmount, mode, dueDate: dueDateToPay, periodKey: periodKeyToPay, voucherNumber };
+
+    apiService.payFDInterest(targetFD.fdNo, payoutAmount, mode, backendPayload).then((res) => {
+      if (res?.data?.voucherNumber && res.data.voucherNumber !== voucherNumber) {
+        // Update local payout with actual server voucherNumber if different
+        setFdInterestPayouts((prev) =>
+          prev.map((p) => (p.id === payout.id ? { ...p, voucherNumber: res.data.voucherNumber } : p))
+        );
+      }
       reloadAllData().catch(() => {});
     }).catch((err) => {
       console.warn('[AppContext] Backend FD Interest payout warning:', err);
     });
 
-    showToast(`Interest payout of ₹${payoutAmount.toLocaleString('en-IN')} recorded for ${targetFD.fdNo} (${dueDateToPay})`, 'success');
-    return true;
+    showToast(`Interest payout voucher ${voucherNumber} (₹${payoutAmount.toLocaleString('en-IN')}) recorded for ${targetFD.fdNo}`, 'success');
+    return payout;
   };
 
   const withdrawFD = (
@@ -3334,6 +3621,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSelectedLoan,
         selectedReceipt,
         setSelectedReceipt,
+        selectedFDReceipt,
+        setSelectedFDReceipt,
         masterControlOpen,
         setMasterControlOpen,
         masterControlUnlocked,
@@ -3359,10 +3648,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateFDInterestRate,
         whatsAppTemplates,
         updateWhatsAppTemplates,
-        telegramConfig,
-        updateTelegramConfig,
         getCustomerById,
         addLoan,
+        updateLoan,
+        deleteLoan,
         addReceipt,
         addFixedDeposit,
         addFDCustomer,
@@ -3383,6 +3672,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsMobileMenuOpen,
         toggleMobileMenu,
         closeMobileMenu,
+        isSidebarCollapsed,
+        setIsSidebarCollapsed,
+        toggleSidebar,
         showToast,
         toasts,
         removeToast,
@@ -3432,7 +3724,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsNotificationOpen,
         toggleNotificationOpen,
         markNotificationAsRead,
-        markAllNotificationsAsRead
+        markAllNotificationsAsRead,
+
+        // Shared Dashboard Toolbar Actions
+        hideDashboardValues,
+        setHideDashboardValues,
+        dashboardRefreshTrigger,
+        triggerDashboardRefresh
       }}
     >
       {children}

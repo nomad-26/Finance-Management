@@ -1,0 +1,73 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Auth & Role helpers
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isStaff() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'ADMIN' ||
+        request.auth.token.role == 'STAFF' ||
+        request.auth.token.role == 'MANAGER' ||
+        request.auth.uid == 'uid_admin_001' ||
+        request.auth.token.email == 'kkvgoldfinance13@gmail.com'
+      );
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'ADMIN' ||
+        request.auth.token.admin == true ||
+        request.auth.uid == 'uid_admin_001' ||
+        request.auth.token.email == 'kkvgoldfinance13@gmail.com'
+      );
+    }
+
+    // Customer photos & KYC documents
+    match /customers/{customerId}/{allPaths=**} {
+      // Customer KYC documents are private and strictly protected
+      allow read: if isStaff();
+      allow write: if isStaff() &&
+                    request.resource.size < 25 * 1024 * 1024 &&
+                    (
+                      request.resource.contentType.matches('image/.*') ||
+                      request.resource.contentType == 'application/pdf'
+                    );
+      allow delete: if isAdmin();
+    }
+
+    // Loan item photos & pledge documents
+    match /loans/{loanId}/{allPaths=**} {
+      allow read: if isStaff();
+      allow write: if isStaff() &&
+                    request.resource.size < 25 * 1024 * 1024 &&
+                    (
+                      request.resource.contentType.matches('image/.*') ||
+                      request.resource.contentType == 'application/pdf'
+                    );
+      allow delete: if isAdmin();
+    }
+
+    // Rental property & lease documents
+    match /rentals/{propertyId}/{allPaths=**} {
+      allow read: if isStaff();
+      allow write: if isStaff() && request.resource.size < 25 * 1024 * 1024;
+      allow delete: if isAdmin();
+    }
+
+    // Receipts and transaction proofs
+    match /receipts/{receiptId}/{allPaths=**} {
+      allow read: if isStaff();
+      allow write: if isStaff() && request.resource.size < 10 * 1024 * 1024;
+      allow delete: if isAdmin();
+    }
+
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

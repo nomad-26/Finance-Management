@@ -26,7 +26,7 @@ export const ADMIN_DEFAULT_PERMISSIONS: UserPermissions = {
 export const STAFF_DEFAULT_PERMISSIONS: UserPermissions = {
   dashboard: { view: true },
   customers: { view: true, create: true, update: true, delete: false },
-  loans: { view: true, create: true, update: true, delete: false, approve: true },
+  loans: { view: true, create: true, update: false, delete: false, approve: true },
   receipts: { view: true, create: true, update: false, delete: false },
   fd: { view: true, create: true, update: true, delete: false },
   accounting: { view: true, create: true, update: true, delete: false },
@@ -146,6 +146,14 @@ export const hasPermission = (
   role?: string | null
 ): boolean => {
   if (isAdminRole(role)) return true;
+
+  // Strict enforcement: Only Admin can edit or delete an existing loan
+  const m = (module || '').toLowerCase().trim();
+  const a = (action || 'view').toLowerCase().trim();
+  if ((m === 'loans' || m === 'loan') && (a === 'update' || a === 'edit' || a === 'delete')) {
+    return false;
+  }
+
   if (!permissions) return false;
 
   const perms = permissions as any;

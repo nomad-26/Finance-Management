@@ -146,9 +146,7 @@ export interface Customer {
     publicId?: string;
     resourceType?: string;
     fileId?: string;
-    telegramFileId?: string;
-    telegramMessageId?: number;
-    telegramChatId?: string;
+    storagePath?: string;
   }>;
   activeLoansCount: number;
   totalBorrowed: number;
@@ -396,6 +394,8 @@ export interface FixedDeposit {
   nomineeName?: string;
   nomineeRelation?: string;
   remarks?: string;
+  receiptNumber?: string;
+  receiptGeneratedAt?: string;
   isDeleted?: boolean;
   deletedAt?: string | null;
   deletedBy?: string | null;
@@ -415,18 +415,38 @@ export interface FixedDeposit {
 export interface FDInterestPayout {
   id: string;
   payoutId?: string;
+  voucherNumber?: string;
+  voucherGeneratedAt?: string;
   fdId?: string;
   fdNo: string;
   customerId?: string;
   depositorName: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  principalAtPayment?: number;
+  interestRatePA?: number;
+  monthlyPayout?: number;
+  tenureMonths?: number;
   amount: number;
   date: string;
   dueDate?: string;
+  startDate?: string;
   periodKey?: string;
-  mode: 'Cash' | 'Bank' | 'UPI';
+  periodLabel?: string;
+  earnedInterest?: number;
+  pendingInterestBefore?: number;
+  pendingInterestAfter?: number;
+  mode: 'Cash' | 'Bank' | 'UPI' | string;
+  bankName?: string;
+  transactionReference?: string;
+  upiId?: string;
+  remarks?: string;
+  processedBy?: string;
   status: 'PAID' | 'PENDING';
   branchId?: string;
   complexId?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface FDWithdrawal {
@@ -628,12 +648,11 @@ export interface WhatsAppTemplates {
   receiptMessage: string;
 }
 
-export interface TelegramConfig {
-  botToken: string;
-  chatId: string;
+export interface FirebaseConfig {
+  projectId: string;
   isSecured: boolean;
-  autoBackupOnOpen: boolean;
-  lastBackupDate?: string;
+  autoSync: boolean;
+  lastSyncDate?: string;
 }
 
 export interface AuditLog {

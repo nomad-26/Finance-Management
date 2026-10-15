@@ -252,19 +252,21 @@ export const ReceiptDisplay: React.FC = () => {
 
   if (!receipt) {
     return (
-      <div className="space-y-6">
-        <PageHeader
-          title="Payment Voucher"
-          breadcrumbs={[{ label: 'Home' }, { label: 'Receipts', onClick: () => setCurrentPage('all-receipts') }, { label: 'Voucher' }]}
-        />
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center max-w-md mx-auto">
-          <p className="text-slate-500 mb-4">No receipt selected or found.</p>
-          <Button
-            variant="primary"
-            onClick={() => setCurrentPage('all-receipts')}
-          >
-            Back to All Receipts
-          </Button>
+      <div className="page-content receipt-screen-container">
+        <div className="space-y-6" style={{ width: '100%', maxWidth: '860px', margin: '0 auto' }}>
+          <PageHeader
+            title="Payment Voucher"
+            breadcrumbs={[{ label: 'Home' }, { label: 'Receipts', onClick: () => setCurrentPage('all-receipts') }, { label: 'Voucher' }]}
+          />
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center max-w-md mx-auto">
+            <p className="text-slate-500 mb-4">No receipt selected or found.</p>
+            <Button
+              variant="primary"
+              onClick={() => setCurrentPage('all-receipts')}
+            >
+              Back to All Receipts
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -278,10 +280,11 @@ export const ReceiptDisplay: React.FC = () => {
     : (associatedLoan ? associatedLoan.outstandingPrincipal : 0);
 
   return (
-    <div className="receipt-page-wrapper">
-      {/* Top Action Bar (Hidden on Print) */}
-      <div className="no-print">
-        <PageHeader
+    <div className="page-content receipt-screen-container">
+      <div className="receipt-page-wrapper">
+        {/* Top Action Bar (Hidden on Print) */}
+        <div className="no-print receipt-screen-header">
+          <PageHeader
           title={`${isDisbursement ? 'Loan Disbursement Voucher' : 'Payment Voucher'} #${receipt.receiptNo}`}
           description={`Receipt issued to ${receipt.customerName} on ${receipt.date}`}
           breadcrumbs={[
@@ -352,7 +355,7 @@ export const ReceiptDisplay: React.FC = () => {
       </div>
 
       {/* Official Financial Payment Voucher */}
-      <div className="receipt-voucher">
+      <div className="receipt-voucher receipt-print-area" id="receipt-print-target">
         {/* Company Header */}
         <div className="rv-header">
           <div className="rv-brand">
@@ -741,6 +744,7 @@ export const ReceiptDisplay: React.FC = () => {
         </div>
       </div>
     </div>
-  );
+  </div>
+);
 };
 

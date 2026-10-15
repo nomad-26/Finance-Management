@@ -4,7 +4,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { CustomerModel, ICustomer, IKYCDocument, ICustomerPhoto } from '../models/Customer.js';
 import { FileAttachmentModel } from '../models/FileAttachment.js';
 import { storageService } from '../services/storage.service.js';
-import { telegramStorageService } from '../services/telegramStorage.service.js';
 import { generateCustomerId } from '../utils/customerIdGenerator.js';
 import { isStorageConnected } from '../config/database.js';
 
@@ -93,7 +92,7 @@ function dataUriToBuffer(dataUri: string): { buffer: Buffer; mimeType: string } 
 }
 
 /**
- * Helper to upload a buffer to Telegram Secure Storage and persist FileAttachment metadata
+ * Helper to upload a buffer to Cloud Secure Storage and persist FileAttachment metadata
  */
 async function uploadAndRecordCustomerFile(options: {
   buffer: Buffer;
@@ -104,9 +103,7 @@ async function uploadAndRecordCustomerFile(options: {
   uploadedBy?: string;
 }): Promise<{
   fileId: string;
-  telegramFileId: string;
-  telegramMessageId?: number;
-  telegramChatId?: string;
+  storagePath?: string;
   url: string;
   viewUrl: string;
   downloadUrl: string;
@@ -118,32 +115,42 @@ async function uploadAndRecordCustomerFile(options: {
 }> {
   const { buffer, mimeType, originalName, customerId, documentType, uploadedBy } = options;
 
-  const uploadResult = await telegramStorageService.uploadDocument(
-    buffer,
+  const saved = await storageService.saveFile(buffer, {
+    category: 'customer',
     originalName,
+    mimeType
+  });
+
+  const fileId = `FILE_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  const now = new Date().toISOString();
+
+  await FileAttachmentModel.create({
+    fileId,
+    entityType: 'customer',
+    entityId: customerId,
+    documentType,
+    originalFileName: originalName,
+    storedFileName: saved.fileName,
     mimeType,
-    {
-      customerId,
-      entityType: 'customer',
-      entityId: customerId,
-      documentType,
-      uploadedBy: uploadedBy || 'STAFF'
-    }
-  );
+    fileSize: buffer.length,
+    storagePath: saved.fileName,
+    viewUrl: `/api/files/${fileId}/view`,
+    downloadUrl: `/api/files/${fileId}/download`,
+    uploadedBy: uploadedBy || 'STAFF',
+    isDeleted: false
+  });
 
   return {
-    fileId: uploadResult.fileId || `FILE_${Date.now()}`,
-    telegramFileId: uploadResult.telegramFileId || '',
-    telegramMessageId: uploadResult.telegramMessageId,
-    telegramChatId: uploadResult.telegramChatId,
-    url: uploadResult.viewUrl || '',
-    viewUrl: uploadResult.viewUrl || '',
-    downloadUrl: uploadResult.downloadUrl || '',
-    fileName: uploadResult.fileName || originalName,
-    originalFileName: uploadResult.originalFileName || originalName,
-    mimeType: uploadResult.mimeType || mimeType,
-    fileSize: uploadResult.fileSize || buffer.length,
-    uploadedAt: uploadResult.uploadedAt || new Date().toISOString()
+    fileId,
+    storagePath: saved.fileName,
+    url: `/api/files/${fileId}/view`,
+    viewUrl: `/api/files/${fileId}/view`,
+    downloadUrl: `/api/files/${fileId}/download`,
+    fileName: originalName,
+    originalFileName: originalName,
+    mimeType,
+    fileSize: buffer.length,
+    uploadedAt: now
   };
 }
 
@@ -199,16 +206,18 @@ export const createCustomer = async (req: Request, res: Response) => {
       });
     }
 
-    // Check duplicate phone number in storage
+    // Check duplicate phone number in storage among ACTIVE, non-deleted customers
+    const normPhone = phoneNumber.replace(/\D/g, '').slice(-10);
     const existingInDb = await CustomerModel.findOne({
-      isDeleted: { $ne: true },
-      $or: [{ phoneNumber }, { phoneNormalized: phoneNumber }]
+      isDeleted: false,
+      includeDeleted: false,
+      phoneNormalized: normPhone
     });
 
-    if (existingInDb) {
+    if (existingInDb && !existingInDb.isDeleted) {
       return res.status(409).json({
         success: false,
-        message: `This mobile number is already registered to ${existingInDb.fullName} (${existingInDb.customerId}).`,
+        message: `This mobile number is already registered to active customer ${existingInDb.fullName || existingInDb.name} (${existingInDb.customerId || existingInDb.id}).`,
         error: 'DUPLICATE_PHONE_NUMBER'
       });
     }
@@ -227,7 +236,7 @@ export const createCustomer = async (req: Request, res: Response) => {
       fileSize: 0,
       uploadedAt: new Date().toISOString(),
       publicId: '',
-      telegramFileId: '',
+      storagePath: '',
       uploadedBy
     };
 
@@ -253,9 +262,7 @@ export const createCustomer = async (req: Request, res: Response) => {
         size: uploaded.fileSize,
         uploadedAt: uploaded.uploadedAt,
         publicId: uploaded.fileId,
-        telegramFileId: uploaded.telegramFileId,
-        telegramMessageId: uploaded.telegramMessageId,
-        telegramChatId: uploaded.telegramChatId,
+        storagePath: uploaded.fileName,
         uploadedBy
       };
     } else if (body.customerPhoto && typeof body.customerPhoto === 'string') {
@@ -281,9 +288,7 @@ export const createCustomer = async (req: Request, res: Response) => {
           size: uploaded.fileSize,
           uploadedAt: uploaded.uploadedAt,
           publicId: uploaded.fileId,
-          telegramFileId: uploaded.telegramFileId,
-          telegramMessageId: uploaded.telegramMessageId,
-          telegramChatId: uploaded.telegramChatId,
+          storagePath: uploaded.fileName,
           uploadedBy
         };
       } else {
@@ -301,7 +306,7 @@ export const createCustomer = async (req: Request, res: Response) => {
       }
     }
 
-    // KYC Documents (Telegram Storage)
+    // KYC Documents (Cloud Storage)
     const kycDocuments: IKYCDocument[] = [];
     const kycFiles = [
       ...(files['kycDocuments'] || []),
@@ -347,9 +352,7 @@ export const createCustomer = async (req: Request, res: Response) => {
         size: uploaded.fileSize,
         uploadedAt: uploaded.uploadedAt,
         publicId: uploaded.fileId,
-        telegramFileId: uploaded.telegramFileId,
-        telegramMessageId: uploaded.telegramMessageId,
-        telegramChatId: uploaded.telegramChatId,
+        storagePath: uploaded.fileName,
         resourceType,
         uploadedBy
       });
@@ -431,7 +434,7 @@ export const createCustomer = async (req: Request, res: Response) => {
 };
 
 /**
- * Normalizes customer record and aggregates KYC metadata from Telegram & Google Drive.
+ * Normalizes customer record and aggregates KYC metadata from Cloud Storage.
  */
 async function normalizeCustomerRecord(customer: any): Promise<{ customer: any; kycDocuments: any[] }> {
   if (!customer) return { customer: null, kycDocuments: [] };
@@ -474,7 +477,7 @@ async function normalizeCustomerRecord(customer: any): Promise<{ customer: any; 
           (d: any) =>
             d.id === att.fileId ||
             d.fileId === att.fileId ||
-            (att.telegramFileId && (d.telegramFileId === att.telegramFileId))
+            (att.storagePath && (d.storagePath === att.storagePath))
         );
         if (!exists) {
           rawDocs.push({
@@ -486,9 +489,7 @@ async function normalizeCustomerRecord(customer: any): Promise<{ customer: any; 
             originalFileName: att.originalFileName,
             mimeType: att.mimeType,
             fileSize: att.fileSize,
-            telegramFileId: att.telegramFileId,
-            telegramMessageId: att.telegramMessageId,
-            telegramChatId: att.telegramChatId,
+            storagePath: att.storagePath,
             viewUrl: `/api/files/${att.fileId}/view`,
             downloadUrl: `/api/files/${att.fileId}/download`,
             uploadedAt: att.createdAt,
@@ -521,9 +522,7 @@ async function normalizeCustomerRecord(customer: any): Promise<{ customer: any; 
       mimeType: doc.mimeType || (doc.fileName?.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
       fileSize: doc.fileSize || doc.size || 0,
       size: doc.fileSize || doc.size || 0,
-      telegramFileId: doc.telegramFileId,
-      telegramMessageId: doc.telegramMessageId,
-      telegramChatId: doc.telegramChatId,
+      storagePath: doc.storagePath,
       url: viewUrl,
       viewUrl,
       downloadUrl,
@@ -729,6 +728,27 @@ export const updateCustomer = async (req: Request, res: Response) => {
           message: 'Please enter a valid 10-digit Indian mobile number.'
         });
       }
+
+      // Check duplicate phone number in storage among other ACTIVE, non-deleted customers
+      const duplicate = await CustomerModel.findOne({
+        isDeleted: false,
+        includeDeleted: false,
+        phoneNormalized: norm
+      });
+
+      if (
+        duplicate &&
+        !duplicate.isDeleted &&
+        String(duplicate.id) !== String(targetId) &&
+        String(duplicate.customerId) !== String(targetId)
+      ) {
+        return res.status(409).json({
+          success: false,
+          message: `This mobile number is already registered to another active customer: ${duplicate.fullName || duplicate.name} (${duplicate.customerId || duplicate.id}).`,
+          error: 'DUPLICATE_PHONE_NUMBER'
+        });
+      }
+
       updateFields.phoneNumber = norm;
       updateFields.phone = norm;
       updateFields.phoneNormalized = norm;
@@ -775,9 +795,7 @@ export const updateCustomer = async (req: Request, res: Response) => {
         url: uploaded.url,
         viewUrl: uploaded.viewUrl,
         downloadUrl: uploaded.downloadUrl,
-        telegramFileId: uploaded.telegramFileId,
-        telegramMessageId: uploaded.telegramMessageId,
-        telegramChatId: uploaded.telegramChatId,
+        storagePath: uploaded.fileName,
         mimeType: photoFile.mimetype || 'image/jpeg',
         fileSize: uploaded.fileSize,
         size: uploaded.fileSize,
@@ -803,9 +821,7 @@ export const updateCustomer = async (req: Request, res: Response) => {
           url: uploaded.url,
           viewUrl: uploaded.viewUrl,
           downloadUrl: uploaded.downloadUrl,
-          telegramFileId: uploaded.telegramFileId,
-          telegramMessageId: uploaded.telegramMessageId,
-          telegramChatId: uploaded.telegramChatId,
+          storagePath: uploaded.fileName,
           mimeType: parsed.mimeType,
           fileSize: uploaded.fileSize,
           size: uploaded.fileSize,
@@ -820,9 +836,7 @@ export const updateCustomer = async (req: Request, res: Response) => {
         fileName: existing.customerPhoto?.fileName || `customer-photo-${custId}.jpg`,
         url: body.customerPhotoUrl,
         viewUrl: body.customerPhotoUrl,
-        telegramFileId: existing.customerPhoto?.telegramFileId,
-        telegramMessageId: existing.customerPhoto?.telegramMessageId,
-        telegramChatId: existing.customerPhoto?.telegramChatId,
+        storagePath: existing.customerPhoto?.storagePath,
         mimeType: existing.customerPhoto?.mimeType || 'image/jpeg',
         fileSize: existing.customerPhoto?.fileSize || 0,
         uploadedAt: existing.customerPhoto?.uploadedAt || new Date().toISOString(),
@@ -832,7 +846,7 @@ export const updateCustomer = async (req: Request, res: Response) => {
       updateFields.customerPhoto = null;
     }
 
-    // KYC update (Telegram Storage)
+    // KYC update (Cloud Storage)
     const kycFiles = [
       ...(files['kycDocuments'] || []),
       ...(files['aadhaarDoc'] || []),
@@ -875,9 +889,7 @@ export const updateCustomer = async (req: Request, res: Response) => {
           url: uploaded.url,
           viewUrl: uploaded.viewUrl,
           downloadUrl: uploaded.downloadUrl,
-          telegramFileId: uploaded.telegramFileId,
-          telegramMessageId: uploaded.telegramMessageId,
-          telegramChatId: uploaded.telegramChatId,
+          storagePath: uploaded.fileName,
           mimeType: file.mimetype || (isPdf ? 'application/pdf' : 'image/jpeg'),
           fileSize: uploaded.fileSize,
           size: uploaded.fileSize,
@@ -894,7 +906,12 @@ export const updateCustomer = async (req: Request, res: Response) => {
     }
 
     Object.assign(existing, updateFields);
-    const updatedDoc = await existing.save();
+    let updatedDoc: any;
+    if (typeof existing.save === 'function') {
+      updatedDoc = await existing.save();
+    } else {
+      updatedDoc = await CustomerModel.findByIdAndUpdate(existing.id || existing.customerId || targetId, existing);
+    }
 
     return res.json({
       success: true,
@@ -990,9 +1007,7 @@ export const uploadCustomerKycDocument = async (req: Request, res: Response) => 
         url: uploaded.url,
         viewUrl: uploaded.viewUrl,
         downloadUrl: uploaded.downloadUrl,
-        telegramFileId: uploaded.telegramFileId,
-        telegramMessageId: uploaded.telegramMessageId,
-        telegramChatId: uploaded.telegramChatId,
+        storagePath: uploaded.fileName,
         mimeType: file.mimetype || (isPdf ? 'application/pdf' : 'image/jpeg'),
         fileSize: uploaded.fileSize,
         size: uploaded.fileSize,
@@ -1015,14 +1030,14 @@ export const uploadCustomerKycDocument = async (req: Request, res: Response) => 
     const firstDoc = newlyAttachedDocs[0];
     return res.status(201).json({
       success: true,
-      message: `${newlyAttachedDocs.length} KYC document(s) uploaded to Telegram secure storage successfully.`,
+      message: `${newlyAttachedDocs.length} KYC document(s) uploaded to secure cloud storage successfully.`,
       document: firstDoc ? {
         documentId: firstDoc.id || firstDoc.fileId,
         customerId,
         documentType: firstDoc.documentType,
         fileName: firstDoc.fileName,
         mimeType: firstDoc.mimeType,
-        telegramFileId: firstDoc.telegramFileId,
+        storagePath: firstDoc.storagePath || firstDoc.fileId,
         viewUrl: firstDoc.viewUrl,
         downloadUrl: firstDoc.downloadUrl
       } : null,
@@ -1066,7 +1081,7 @@ export const deleteCustomerKycDocument = async (req: Request, res: Response) => 
         d.id === docId ||
         d.fileId === docId ||
         d.publicId === docId ||
-        d.telegramFileId === docId
+        (d.fileId === docId || d.storagePath === docId)
     );
 
     if (!docToDelete) {
@@ -1076,10 +1091,13 @@ export const deleteCustomerKycDocument = async (req: Request, res: Response) => 
       });
     }
 
-    // Remove from Telegram storage and mark FileAttachment deleted
+    // Mark FileAttachment as deleted
     if (docToDelete.fileId) {
       try {
-        await telegramStorageService.deleteDocument(docToDelete.fileId);
+        await FileAttachmentModel.updateOne(
+          { fileId: docToDelete.fileId },
+          { $set: { isDeleted: true, deletedAt: new Date().toISOString() } }
+        );
       } catch (err: any) {
         console.warn('[CustomerController] Notice deleting file attachment:', err?.message || err);
       }
@@ -1092,7 +1110,7 @@ export const deleteCustomerKycDocument = async (req: Request, res: Response) => 
         d.id !== docId &&
         d.fileId !== docId &&
         d.publicId !== docId &&
-        d.telegramFileId !== docId
+        (d.fileId !== docId && d.storagePath !== docId)
     );
     customer.updatedAt = new Date();
 
@@ -1100,7 +1118,7 @@ export const deleteCustomerKycDocument = async (req: Request, res: Response) => 
 
     return res.json({
       success: true,
-      message: 'KYC document deleted successfully from customer profile and Telegram storage.',
+      message: 'KYC document deleted successfully from customer profile and cloud storage.',
       data: customer,
       deletedDocId: docId
     });
@@ -1115,7 +1133,7 @@ export const deleteCustomerKycDocument = async (req: Request, res: Response) => 
 
 /**
  * GET /api/customers/:id/kyc or /api/customers/:id/documents
- * Retrieves all KYC document metadata for a customer from Telegram storage.
+ * Retrieves all KYC document metadata for a customer from Cloud storage.
  */
 export const getCustomerKycDocuments = async (req: Request, res: Response) => {
   try {
@@ -1155,7 +1173,7 @@ export const getCustomerKycDocuments = async (req: Request, res: Response) => {
 
 /**
  * POST /api/customers/:id/photo
- * Uploads customer photo from file or webcam base64/data URI, stores in Google Drive and Telegram metadata.
+ * Uploads customer photo from file or webcam base64/data URI, stores in Cloud storage and Firestore metadata.
  */
 export const uploadCustomerPhoto = async (req: Request, res: Response) => {
   try {
@@ -1218,9 +1236,7 @@ export const uploadCustomerPhoto = async (req: Request, res: Response) => {
       url: uploaded.url,
       viewUrl: uploaded.viewUrl,
       downloadUrl: uploaded.downloadUrl,
-      telegramFileId: uploaded.telegramFileId,
-      telegramMessageId: uploaded.telegramMessageId,
-      telegramChatId: uploaded.telegramChatId,
+      storagePath: uploaded.fileName,
       mimeType: uploaded.mimeType,
       fileSize: uploaded.fileSize,
       size: uploaded.fileSize,
@@ -1279,7 +1295,7 @@ export const getCustomerDocumentById = async (req: Request, res: Response) => {
         d.id === documentIdentifier ||
         d.fileId === documentIdentifier ||
         d.publicId === documentIdentifier ||
-        d.telegramFileId === documentIdentifier
+        (d.fileId === documentIdentifier || d.storagePath === documentIdentifier)
     );
 
     if (!doc) {
@@ -1327,15 +1343,27 @@ export const deleteCustomer = async (req: Request, res: Response) => {
       });
     }
 
-    // Soft delete
+    // Soft delete: update isDeleted flag in storage
     customer.isDeleted = true;
     customer.deletedAt = new Date().toISOString();
     customer.deletedBy = (req as any).user?.email || (req as any).user?.id || 'ADMIN';
-    await CustomerModel.findOneAndUpdate({ id: targetId }, customer);
+    await CustomerModel.findOneAndUpdate({
+      includeDeleted: true,
+      $or: [
+        { id: targetId },
+        { customerId: targetId },
+        { id: customer.id },
+        { customerId: customer.customerId }
+      ]
+    }, {
+      isDeleted: true,
+      deletedAt: customer.deletedAt,
+      deletedBy: customer.deletedBy
+    });
 
     return res.json({
       success: true,
-      message: 'Customer moved to trash successfully.'
+      message: 'Customer moved to Deleted Customers successfully.'
     });
   } catch (error: any) {
     console.error('[CustomerController] deleteCustomer error:', error);
@@ -1352,6 +1380,7 @@ export const restoreCustomer = async (req: Request, res: Response) => {
 
     const customer = await CustomerModel.findOneAndUpdate(
       {
+        includeDeleted: true,
         $or: [
           { customerId: targetId },
           { id: targetId }
@@ -1386,47 +1415,19 @@ export const deletePermanentlyCustomer = async (req: Request, res: Response) => 
   try {
     const targetId = req.params.id;
 
-    const customer = await CustomerModel.findOne({
-      $or: [
-        { customerId: targetId },
-        { id: targetId }
-      ]
-    });
+    const delResult = await CustomerModel.deletePermanently(targetId);
 
-    if (!customer) {
+    if (!delResult.success) {
       return res.status(404).json({
         success: false,
-        message: `Customer with ID "${targetId}" not found.`,
+        message: delResult.message || `Customer with ID "${targetId}" not found.`,
         error: { code: 'CUSTOMER_NOT_FOUND' }
       });
     }
 
-    // Clean up customer files in Telegram storage
-    try {
-      if (customer.customerPhoto?.fileId) {
-        await telegramStorageService.deleteDocument(customer.customerPhoto.fileId);
-      }
-      if (Array.isArray(customer.kycDocuments)) {
-        for (const doc of customer.kycDocuments) {
-          if (doc.fileId) {
-            await telegramStorageService.deleteDocument(doc.fileId);
-          }
-        }
-      }
-    } catch (cleanErr: any) {
-      console.warn('[CustomerController] Notice cleaning customer attachments:', cleanErr?.message || cleanErr);
-    }
-
-    const result = await CustomerModel.deleteOne({
-      $or: [
-        { customerId: targetId },
-        { id: targetId }
-      ]
-    });
-
     return res.json({
       success: true,
-      message: 'Customer permanently deleted from database and storage.'
+      message: delResult.message || 'Customer permanently deleted from database and storage.'
     });
   } catch (error: any) {
     return res.status(500).json({

@@ -1,6 +1,6 @@
 import { rentalRepository } from '../modules/rental/repositories/rental.repository.js';
 import { rentalDayBookRepository } from '../modules/rental/repositories/rentalDayBook.repository.js';
-import { telegramRepository } from '../telegram/telegram.repository.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 
 
 export interface AdminRentalSummary {
@@ -796,7 +796,7 @@ class RentalAdminSummaryService {
     };
 
     // 1. Reset rental repository records safely
-    await telegramRepository.resetApplicationData([
+    await firestoreRepository.resetApplicationData([
       'RENTAL_COMPLEX',
       'RENTAL_SHOP',
       'RENTAL_PAYMENT',

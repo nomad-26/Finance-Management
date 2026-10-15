@@ -31,10 +31,10 @@ router.get('/:id', authorizePermission('customers', 'view'), getCustomerById);
 router.post('/', authorizePermission('customers', 'create'), handleUploadMiddleware, createCustomer);
 router.put('/:id', authorizePermission('customers', 'update'), handleUploadMiddleware, updateCustomer);
 
-// Customer Photo Upload Endpoint (Webcam or File Upload -> Google Drive + Telegram metadata)
+// Customer Photo Upload Endpoint (Webcam or File Upload -> Cloud Storage + Cloud Firestore metadata)
 router.post('/:id/photo', authorizePermission('customers', 'update'), handleUploadMiddleware, uploadCustomerPhoto);
 
-// Dedicated KYC Document Endpoints & Aliases (Google Drive upload + Telegram metadata storage)
+// Dedicated KYC Document Endpoints & Aliases (Cloud Storage + Cloud Firestore metadata storage)
 router.get('/:id/kyc', authorizePermission('customers', 'viewKyc'), getCustomerKycDocuments);
 router.get('/:id/documents', authorizePermission('customers', 'viewKyc'), getCustomerKycDocuments);
 router.get('/:id/kyc/:documentId', authorizePermission('customers', 'viewKyc'), getCustomerDocumentById);

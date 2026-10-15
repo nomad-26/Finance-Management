@@ -5,7 +5,7 @@ import { env } from '../config/env.js';
 import { UserModel, IUser, UserRole, normalizeUserPermissions } from '../models/User.js';
 import { sessionService } from '../services/session.service.js';
 import { localAuthService } from '../services/localAuth.service.js';
-import { telegramSyncService } from '../telegram/telegram.sync.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 
 export const login = async (req: Request, res: Response) => {
   const reqStart = Date.now();
@@ -30,13 +30,13 @@ export const login = async (req: Request, res: Response) => {
     // Find user by email, username, staffId, uid, or _id in local store
     let user = localAuthService.findUserByIdentifier(rawIdentifier);
 
-    // If not found in local memory, sync from Telegram shared storage (cross-PC creation)
+    // If not found in local memory, sync from Cloud Firestore (cross-PC creation)
     if (!user) {
-      console.log(`[LOGIN] User not found locally for "${rawIdentifier}". Checking Telegram shared persistence...`);
+      console.log(`[LOGIN] User not found locally for "${rawIdentifier}". Checking Cloud Firestore...`);
       try {
-        await telegramSyncService.syncFromTelegram();
+        await firestoreRepository.syncWithFirestore();
       } catch (syncErr: any) {
-        console.warn('[LOGIN] Telegram sync check notice:', syncErr?.message || syncErr);
+        console.warn('[LOGIN] Cloud Firestore sync check notice:', syncErr?.message || syncErr);
       }
       user = localAuthService.findUserByIdentifier(rawIdentifier);
     }
@@ -108,9 +108,9 @@ export const login = async (req: Request, res: Response) => {
 
     // If password mismatch, check if password was updated on another PC and sync
     if (!isMatch) {
-      console.log(`[LOGIN] Initial password check failed. Syncing latest state from Telegram...`);
+      console.log(`[LOGIN] Initial password check failed. Syncing latest state from Cloud Firestore...`);
       try {
-        await telegramSyncService.syncFromTelegram();
+        await firestoreRepository.syncWithFirestore();
         const freshUser = localAuthService.findUserByIdentifier(rawIdentifier);
         if (freshUser && freshUser.passwordHash && freshUser.passwordHash !== user.passwordHash) {
           isMatch = await bcrypt.compare(password, freshUser.passwordHash);

@@ -20,7 +20,7 @@ import { FDRenewalModel } from '../models/FDRenewal.js';
 import { DayBookModel } from '../models/DayBook.js';
 import { FileAttachmentModel } from '../models/FileAttachment.js';
 import { env } from '../config/env.js';
-import { telegramRepository } from '../telegram/telegram.repository.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 import { localAuthService } from './localAuth.service.js';
 
 export interface WipePreviewData {
@@ -173,7 +173,7 @@ class SystemWipeService {
 
     return {
       environment: env.NODE_ENV,
-      databaseType: 'Telegram Bot API Storage',
+      databaseType: 'Cloud Firestore Storage',
       counts: {
         customers: customersCount,
         loans: loansCount,
@@ -194,7 +194,7 @@ class SystemWipeService {
         totalOperationalRecords: total
       },
       wipeableEntities: [
-        'Customers & KYC Records (Telegram Storage & Local Cache)',
+        'Customers & KYC Records (Cloud Firestore & Local Cache)',
         'Active & Closed Loans and Item Records',
         'Gold Pledge Item Details & Ornaments',
         'Receipts & Repayment Vouchers',
@@ -215,7 +215,7 @@ class SystemWipeService {
         'Verified JSON Backup Archive History'
       ],
       fileStorageNotice:
-        'CRITICAL: Actual binary files (Customer photos, KYC IDs, Ornament images, PDFs) stored in Telegram Secure Storage ARE PRESERVED intact and will not be deleted during database wipe. This enables full reconnection when restoring from a JSON backup.'
+        'CRITICAL: Actual binary files (Customer photos, KYC IDs, Ornament images, PDFs) stored in Cloud Secure Storage ARE PRESERVED intact and will not be deleted during database wipe. This enables full reconnection when restoring from a JSON backup.'
     };
   }
 
@@ -268,7 +268,7 @@ class SystemWipeService {
 
   /**
    * ATOMIC WIPE EXECUTION ACROSS ALL DOMAINS
-   * Clears database records and metadata, but PRESERVES Telegram Secure Storage actual files.
+   * Clears database records and metadata, but PRESERVES Cloud Secure Storage actual files.
    */
   public async confirmAndWipeData(
     token: string,
@@ -316,9 +316,9 @@ class SystemWipeService {
     rentalRepo.clearCache();
     rentalDayBookRepo.clearCache();
 
-    // 3. Clear Operational Records in Telegram storage and models
+    // 3. Clear Operational Records in Cloud Firestore storage and models
     try {
-      await telegramRepository.resetApplicationData();
+      await firestoreRepository.resetApplicationData();
       await Promise.all([
         CustomerModel.deleteMany({}),
         LoanModel.deleteMany({}),
@@ -331,9 +331,9 @@ class SystemWipeService {
         DayBookModel.deleteMany({}),
         FileAttachmentModel.deleteMany({})
       ]);
-      console.log('[SystemWipeService] All Telegram Finance & Rental operational records wiped successfully.');
+      console.log('[SystemWipeService] All Cloud Firestore Finance & Rental operational records wiped successfully.');
     } catch (mErr) {
-      console.warn('[SystemWipeService] Notice clearing Telegram records:', (mErr as any)?.message || mErr);
+      console.warn('[SystemWipeService] Notice clearing Cloud Firestore records:', (mErr as any)?.message || mErr);
     }
 
     // 4. Reset sequence counters in memory and storage to 0
@@ -362,11 +362,11 @@ class SystemWipeService {
       backupSha256: record.sha256,
       wipedRecordCounts: record.recordCounts,
       environment: env.NODE_ENV,
-      details: 'All operational customer, loan, payment, receipt, rental, and ledger records permanently wiped following verified JSON backup creation. Telegram binary files retained.'
+      details: 'All operational customer, loan, payment, receipt, rental, and ledger records permanently wiped following verified JSON backup creation. Cloud binary files retained.'
     };
     localFileRepository.writeJson('audit_logs.json', [wipeAuditRecord]);
 
-    // 6. Post-Wipe Verification Assertion Check (Local storage + Telegram cache)
+    // 6. Post-Wipe Verification Assertion Check (Local storage + Cloud Firestore cache)
     const customersAfter = localFileRepository.readJson<any[]>('customers.json', []);
     const loansAfter = localFileRepository.readJson<any[]>('loans.json', []);
     const receiptsAfter = localFileRepository.readJson<any[]>('receipts.json', []);

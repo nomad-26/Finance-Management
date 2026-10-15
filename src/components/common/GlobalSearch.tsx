@@ -197,7 +197,7 @@ export const GlobalSearch: React.FC = () => {
     : 'Search customers, loans, receipts...';
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', width: '320px', maxWidth: '100%' }}>
+    <div ref={containerRef} className="topbar-search" style={{ position: 'relative' }}>
       <SearchInput
         value={query}
         onChange={setQuery}

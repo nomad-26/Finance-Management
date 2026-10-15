@@ -1,31 +1,51 @@
 /* ============================================================
-   RECEIPT DISPLAY / PAYMENT VOUCHER STYLES
-   Professional Financial Payment Voucher & Optimized A4 Print
+   RECEIPT DISPLAY / PAYMENT VOUCHER SCREEN & PRINT STYLES
+   Standardized layout containers cleanly separated from sidebar
    ============================================================ */
+
+.receipt-screen-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 16px var(--page-padding-x, 24px) 32px;
+  flex: 1;
+  position: relative;
+}
 
 .receipt-page-wrapper {
   display: flex;
   flex-direction: column;
   gap: 20px;
   width: 100%;
-  max-width: 820px;
+  max-width: 860px;
   margin: 0 auto;
-  padding-bottom: 32px;
+  box-sizing: border-box;
+  position: relative;
+  transition: max-width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* When sidebar is collapsed, smoothly expand receipt into available space while remaining centered */
+.main-content.sidebar-collapsed .receipt-page-wrapper,
+.app-layout.sidebar-collapsed .receipt-page-wrapper {
+  max-width: 960px;
 }
 
 /* ── Screen Action Bar ── */
-.receipt-action-bar {
+.receipt-action-bar,
+.receipt-screen-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
+  flex-direction: column;
+  width: 100%;
 }
 
 .receipt-action-btns {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 /* ── Printable Voucher Container ── */
@@ -496,7 +516,8 @@
 }
 
 /* ============================================================
-   PRINT SPECIFIC RULES (A4 PORTRAIT)
+   PRINT SPECIFIC RULES (A4 PORTRAIT) — DEDICATED RECEIPT TARGET
+   Completely separates sidebar and application chrome from receipt
    ============================================================ */
 @page {
   size: A4 portrait;
@@ -510,59 +531,167 @@
     font-size: 11pt !important;
     margin: 0 !important;
     padding: 0 !important;
+    width: 100% !important;
+    min-height: auto !important;
+    height: auto !important;
+    overflow: visible !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  /* Hide all app chrome, navigation, headers, sidebars, toast popups */
+  /* Completely eliminate ALL application navigation, sidebars, headers, floating bars, toasts */
   .sidebar,
-  .topbar,
-  .mobile-hamburger-btn,
-  .topbar-action-btn,
+  .app-sidebar,
+  aside,
+  .sidebar-brand,
+  .sidebar-nav,
+  .sidebar-footer,
   .sidebar-backdrop,
+  .topbar,
+  .app-topbar,
+  header,
+  .app-header,
+  .top-navbar,
+  .hamburger-button,
+  .sidebar-toggle-btn,
+  .mobile-hamburger-btn,
+  .mobile-close-btn,
+  .topbar-left,
+  .topbar-right,
+  .topbar-action-btn,
+  .topbar-search,
+  .topbar-new-loan-btn,
+  .notification-center,
+  .notification-flyout-panel,
+  .toast-container,
+  .toast,
   .no-print,
   .receipt-action-bar,
+  .receipt-action-btns,
+  .receipt-screen-header,
   .page-header,
-  .toast-container,
-  .toast {
+  .page-header-container,
+  .print-hide,
+  nav {
     display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    position: absolute !important;
+    left: -9999px !important;
+    top: -9999px !important;
+    pointer-events: none !important;
+    overflow: hidden !important;
   }
 
+  /* Flatten app layout and main content hierarchy to prevent flex-box print overflow/clipping */
+  #root,
+  .app-layout,
+  .app-container,
   .main-content,
+  .app-main,
+  main,
   .page-content,
+  .receipt-screen-container,
   .receipt-page-wrapper {
+    display: block !important;
+    position: static !important;
     margin: 0 !important;
     padding: 0 !important;
     width: 100% !important;
-    max-width: 100% !important;
-    box-shadow: none !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    min-height: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    float: none !important;
     border: none !important;
+    box-shadow: none !important;
     background: transparent !important;
   }
 
-  .receipt-voucher {
-    border: 1px solid #cbd5e1 !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    padding: 16px 20px !important;
-    margin: 0 auto !important;
+  /* Dedicated Receipt Print Target Container */
+  .receipt-voucher,
+  .receipt-print-area {
+    display: block !important;
+    position: static !important;
     width: 100% !important;
-    max-width: 100% !important;
+    max-width: 186mm !important; /* Standard printable width on A4 with 12mm side margins */
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    border: 1px solid #94a3b8 !important;
+    border-radius: 4px !important;
+    background: #ffffff !important;
+    padding: 18px 22px !important;
+    box-sizing: border-box !important;
+    overflow: visible !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
 
+  /* Preserve essential financial colors and styling for print */
+  .rv-header {
+    border-bottom: 2px solid #0f172a !important;
+    padding-bottom: 12px !important;
+  }
+
+  .rv-phone-box {
+    background: #dc2626 !important;
+    color: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .rv-table th {
+    background: #f8fafc !important;
+    color: #334155 !important;
+    border-top: 1px solid #cbd5e1 !important;
+    border-bottom: 1px solid #cbd5e1 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .rv-table tr.rv-total-row td {
+    background: #f0fdf4 !important;
+    border-top: 2px solid #0f172a !important;
+    border-bottom: 2px solid #0f172a !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .rv-row-deduction td {
+    background: #fffbeb !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .rv-box {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Avoid unnecessary page breaks */
   .rv-header,
   .rv-info-grid,
   .rv-table-wrap,
   .rv-balance-grid,
-  .rv-signature-row {
+  .rv-signature-row,
+  .rv-footer {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
 
   .rv-signature-row {
-    margin-top: 28px !important;
+    margin-top: 24px !important;
   }
 }
 

@@ -6,7 +6,7 @@ import { rentalRepository } from '../modules/rental/repositories/rental.reposito
 import { rentalDayBookRepository } from '../modules/rental/repositories/rentalDayBook.repository.js';
 import { seedUsers } from './seedAdmin.js';
 import { backupPackageService } from '../services/backupPackage.service.js';
-import { telegramRepository } from '../telegram/telegram.repository.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 
 export interface ProductionResetResult {
   success: boolean;
@@ -24,9 +24,9 @@ export async function executeProductionDatabaseReset(): Promise<ProductionResetR
   console.log('🚀 KKV GOLD FINANCE: INITIATING PRODUCTION DATABASE RESET');
   console.log('================================================================\n');
 
-  // 1. Ensure Telegram Storage Readiness
-  await telegramRepository.initialize();
-  console.log('✓ Telegram storage readiness established.');
+  // 1. Ensure Cloud Firestore Storage Readiness
+  await firestoreRepository.initialize();
+  console.log('✓ Cloud Firestore storage readiness established.');
 
   // 2. Pre-Reset Safety Backup
   let backupRecord: any = null;
@@ -134,16 +134,16 @@ export async function executeProductionDatabaseReset(): Promise<ProductionResetR
   };
   rentalRepository.writeJson('counters.json', resetRentalCounters);
 
-  // 7. Clear Telegram Persistent Storage
+  // 7. Clear Cloud Firestore Persistent Storage
   localFileRepository.clearCache();
   rentalRepository.clearCache();
   rentalDayBookRepository.clearCache();
 
   try {
-    console.log('[6/6] Clearing Telegram remote persistent storage...');
-    await telegramRepository.resetApplicationData();
+    console.log('[6/6] Clearing Cloud Firestore remote persistent storage...');
+    await firestoreRepository.resetApplicationData();
   } catch (tErr) {
-    console.warn('Warning resetting Telegram storage:', tErr);
+    console.warn('Warning resetting Cloud Firestore storage:', tErr);
   }
 
   // 8. Re-verify & Seed Required System Users (Admin, Staff, Rental Staff)
@@ -151,13 +151,13 @@ export async function executeProductionDatabaseReset(): Promise<ProductionResetR
   await seedUsers();
 
   // 9. Verify Zero State
-  const finalCustomers = telegramRepository.getRecords('CUSTOMER').length;
-  const finalLoans = telegramRepository.getRecords('LOAN').length;
-  const finalReceipts = telegramRepository.getRecords('RECEIPT').length;
-  const finalComplexes = telegramRepository.getRecords('RENTAL_COMPLEX').length;
-  const finalShops = telegramRepository.getRecords('RENTAL_SHOP').length;
-  const finalPayments = telegramRepository.getRecords('RENTAL_PAYMENT').length;
-  const finalExpenses = telegramRepository.getRecords('RENTAL_EXPENSE').length;
+  const finalCustomers = firestoreRepository.getRecords('CUSTOMER').length;
+  const finalLoans = firestoreRepository.getRecords('LOAN').length;
+  const finalReceipts = firestoreRepository.getRecords('RECEIPT').length;
+  const finalComplexes = firestoreRepository.getRecords('RENTAL_COMPLEX').length;
+  const finalShops = firestoreRepository.getRecords('RENTAL_SHOP').length;
+  const finalPayments = firestoreRepository.getRecords('RENTAL_PAYMENT').length;
+  const finalExpenses = firestoreRepository.getRecords('RENTAL_EXPENSE').length;
 
   const verifiedZeroState =
     finalCustomers === 0 &&
@@ -184,7 +184,7 @@ export async function executeProductionDatabaseReset(): Promise<ProductionResetR
       'Master Control Interest & Loan Rates profile',
       'Branch Settings & Contact Profile',
       'WhatsApp Templates & Printer Configurations',
-      'Telegram Record Envelopes, schemas and indexes'
+      'Cloud Firestore Record Envelopes, schemas and indexes'
     ],
     resetCounters,
     verifiedZeroState

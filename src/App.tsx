@@ -41,6 +41,7 @@ import { RentalPendingRent } from './modules/rental/pages/RentalPendingRent';
 import { LoginView } from './components/auth/LoginView';
 import { AccessDenied } from './components/auth/AccessDenied';
 import { ForceChangePasswordModal } from './components/auth/ForceChangePasswordModal';
+import { ConfigurationCenterModal } from './components/config/ConfigurationCenterModal';
 
 export const App: React.FC = () => {
   const {
@@ -53,7 +54,8 @@ export const App: React.FC = () => {
     hasPermission,
     loginWithCredentials,
     isNotificationOpen,
-    setIsNotificationOpen
+    setIsNotificationOpen,
+    isSidebarCollapsed
   } = useApp();
 
   // Login Form State
@@ -62,6 +64,7 @@ export const App: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [showConfigModal, setShowConfigModal] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,6 +165,8 @@ export const App: React.FC = () => {
       case 'interest-pending':
       case 'deposit-withdrawal':
       case 'withdrawal-display':
+      case 'fd-receipt':
+      case 'fd-receipt-display':
         if (!hasPermission('fd', 'view')) {
           return <AccessDenied requestedArea="Fixed Deposits" onNavigateHome={() => setCurrentPage(getHomeRoute())} />;
         }
@@ -291,7 +296,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="app-layout">
+    <div className={`app-layout ${isSidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-expanded'}`}>
       {/* Toast Notification Container */}
       <div
         style={{
@@ -350,6 +355,7 @@ export const App: React.FC = () => {
         ))}
       </div>
 
+
       {/* ── SESSION RESTORATION SPLASH SCREEN ── */}
       {authLoading ? (
         <div
@@ -380,18 +386,27 @@ export const App: React.FC = () => {
         </div>
       ) : (!userRole || !currentUser) ? (
         /* ── CUSTOM JWT AUTHENTICATION SCREEN ── */
-        <LoginView
-          loginEmail={loginEmail}
-          setLoginEmail={setLoginEmail}
-          loginPassword={loginPassword}
-          setLoginPassword={setLoginPassword}
-          showPassword={showPassword}
-          setShowPassword={setShowPassword}
-          loginError={loginError}
-          isLoggingIn={isLoggingIn}
-          authLoading={authLoading}
-          handleLogin={handleLogin}
-        />
+        <>
+          <LoginView
+            loginEmail={loginEmail}
+            setLoginEmail={setLoginEmail}
+            loginPassword={loginPassword}
+            setLoginPassword={setLoginPassword}
+            showPassword={showPassword}
+            setShowPassword={setShowPassword}
+            loginError={loginError}
+            isLoggingIn={isLoggingIn}
+            authLoading={authLoading}
+            handleLogin={handleLogin}
+            onOpenConfig={() => setShowConfigModal(true)}
+          />
+          {showConfigModal && (
+            <ConfigurationCenterModal
+              isOpen={showConfigModal}
+              onClose={() => setShowConfigModal(false)}
+            />
+          )}
+        </>
       ) : (
         /* ── AUTHENTICATED APP WORKSPACE ── */
         <>
@@ -399,7 +414,7 @@ export const App: React.FC = () => {
           <Sidebar />
 
           {/* Main Content Area */}
-          <div className="main-content">
+          <div className={`main-content ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
             <Topbar />
             <main style={{ minHeight: 'calc(100vh - var(--topbar-height))', display: 'flex', flexDirection: 'column' }}>
               {renderPage()}

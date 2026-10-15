@@ -47,7 +47,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   );
 
   const rawPreviewTarget =
-    doc?.telegramFileId ||
+    doc?.storagePath ||
     '';
 
   const docTitle =
@@ -95,7 +95,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
       doc?.fileId ||
       doc?.viewUrl ||
       doc?.url ||
-      doc?.telegramFileId ||
+      doc?.storagePath ||
       rawPreviewTarget;
 
     if (!targetToFetch) {
@@ -165,7 +165,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     const targetToFetch =
       doc?.fileId ||
       doc?.viewUrl ||
-      doc?.telegramFileId ||
+      doc?.storagePath ||
       doc?.url ||
       rawPreviewTarget;
     if (targetToFetch) {
@@ -197,7 +197,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
       doc?.fileId ||
       doc?.viewUrl ||
       doc?.url ||
-      doc?.telegramFileId ||
+      doc?.storagePath ||
       rawPreviewTarget;
 
     if (!targetToFetch) return;
@@ -313,7 +313,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                   }}
                 >
                   <ShieldCheck size={12} color="#059669" />
-                  Telegram Secure Storage
+                  Cloud Secure Storage
                 </span>
               </div>
 

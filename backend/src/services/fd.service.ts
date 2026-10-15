@@ -1,6 +1,6 @@
 import Decimal from 'decimal.js';
 import { FixedDeposit, FDCustomer, FDInterestPayout, FDWithdrawal, FDRenewal } from '../types/index.js';
-import { telegramRepository } from '../telegram/telegram.repository.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 import { adminService } from './admin.service.js';
 import { accountingService } from './accounting.service.js';
 import { counterService } from './counter.service.js';
@@ -12,7 +12,7 @@ export class FDService {
   }
 
   public getCustomers(): FDCustomer[] {
-    return telegramRepository.getRecords<FDCustomer>('FD_CUSTOMER');
+    return firestoreRepository.getRecords<FDCustomer>('FD_CUSTOMER');
   }
 
   public getCustomerByPhone(phone: string): FDCustomer | null {
@@ -34,7 +34,7 @@ export class FDService {
       customerId: seq
     };
 
-    await telegramRepository.createRecord('FD_CUSTOMER', id, newCustomer, actor);
+    await firestoreRepository.createRecord('FD_CUSTOMER', id, newCustomer, actor);
     return newCustomer;
   }
 
@@ -44,7 +44,7 @@ export class FDService {
   }
 
   public getDeposits(): FixedDeposit[] {
-    return telegramRepository.getRecords<FixedDeposit>('FIXED_DEPOSIT');
+    return firestoreRepository.getRecords<FixedDeposit>('FIXED_DEPOSIT');
   }
 
   public getDepositByNo(fdNo: string): FixedDeposit | null {
@@ -97,11 +97,24 @@ export class FDService {
       }
     }
 
+    let receiptNumber = data.receiptNumber;
+    if (!receiptNumber) {
+      receiptNumber = await counterService.getNextFdReceiptNo();
+    } else {
+      const match = receiptNumber.match(/(\d+)$/);
+      if (match) {
+        await counterService.setSequenceIfHigher('fdReceiptNo', parseInt(match[1], 10));
+      }
+    }
+    const receiptGeneratedAt = data.receiptGeneratedAt || new Date().toISOString();
+
     const id = fdNo;
     const newFD: FixedDeposit = {
       ...data,
       id,
       fdNo,
+      receiptNumber,
+      receiptGeneratedAt,
       depositDate,
       maturityDate,
       principal: principal.toNumber(),
@@ -120,7 +133,7 @@ export class FDService {
       updatedAt: new Date().toISOString()
     };
 
-    await telegramRepository.createRecord('FIXED_DEPOSIT', id, newFD, actor);
+    await firestoreRepository.createRecord('FIXED_DEPOSIT', id, newFD, actor);
 
     // Create DayBook Entry
     const isCash = data.receivingMethod === 'Cash';
@@ -153,52 +166,136 @@ export class FDService {
   }
 
   public getPayouts(): FDInterestPayout[] {
-    return telegramRepository.getRecords<FDInterestPayout>('FD_INTEREST_PAYOUT');
+    return firestoreRepository.getRecords<FDInterestPayout>('FD_INTEREST_PAYOUT');
+  }
+
+  public getPayoutByVoucherNo(voucherOrId: string): FDInterestPayout | null {
+    const list = this.getPayouts();
+    return (
+      list.find(
+        (p) =>
+          p.voucherNumber === voucherOrId ||
+          p.id === voucherOrId ||
+          p.payoutId === voucherOrId ||
+          p.voucherNumber?.toLowerCase() === voucherOrId.toLowerCase()
+      ) || null
+    );
   }
 
   public async payInterest(
     fdNo: string,
     amount: number,
-    mode: 'Cash' | 'Bank' | 'UPI',
-    dueDate?: string,
-    periodKey?: string,
-    actor?: any
+    mode: 'Cash' | 'Bank' | 'UPI' | string,
+    options?: any,
+    legacyPeriodKey?: string,
+    legacyActor?: any
   ): Promise<FDInterestPayout | null> {
-    const targetFD = telegramRepository.getRecordById<FixedDeposit>('FIXED_DEPOSIT', fdNo);
+    const targetFD = firestoreRepository.getRecordById<FixedDeposit>('FIXED_DEPOSIT', fdNo);
     if (!targetFD || !targetFD.data) return null;
 
     const fd = targetFD.data;
-    const id = `fd-payout-${Date.now()}`;
+
+    let dueDate: string | undefined;
+    let periodKey: string | undefined;
+    let actor: any;
+    let paymentDate: string | undefined;
+    let startDate: string | undefined;
+    let periodLabel: string | undefined;
+    let bankName: string | undefined;
+    let transactionReference: string | undefined;
+    let upiId: string | undefined;
+    let remarks: string | undefined;
+    let voucherNumber: string | undefined;
+    let processedBy: string | undefined;
+    let pendingInterestBefore: number | undefined;
+    let pendingInterestAfter: number | undefined;
+    let earnedInterest: number | undefined;
+
+    if (typeof options === 'object' && options !== null) {
+      dueDate = options.dueDate;
+      startDate = options.startDate;
+      periodKey = options.periodKey || legacyPeriodKey;
+      periodLabel = options.periodLabel;
+      paymentDate = options.paymentDate || options.date;
+      bankName = options.bankName;
+      transactionReference = options.transactionReference;
+      upiId = options.upiId;
+      remarks = options.remarks;
+      voucherNumber = options.voucherNumber;
+      processedBy = options.processedBy;
+      pendingInterestBefore = options.pendingInterestBefore;
+      pendingInterestAfter = options.pendingInterestAfter;
+      earnedInterest = options.earnedInterest;
+      actor = options.actor || legacyActor;
+    } else if (typeof options === 'string') {
+      dueDate = options;
+      periodKey = legacyPeriodKey;
+      actor = legacyActor;
+    }
+
+    if (!voucherNumber) {
+      voucherNumber = await counterService.getNextFdInterestVoucherNo();
+    } else {
+      const match = voucherNumber.match(/(\d+)$/);
+      if (match) {
+        await counterService.setSequenceIfHigher('fdInterestVoucherNo', parseInt(match[1], 10));
+      }
+    }
+
+    const date = paymentDate || new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
+    const voucherGeneratedAt = new Date().toISOString();
+    const id = `fd-payout-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
     const payout: FDInterestPayout = {
       id,
       payoutId: id,
+      voucherNumber,
+      voucherGeneratedAt,
       fdId: fd.id,
       fdNo,
       customerId: fd.customerId,
       depositorName: fd.depositorName,
-      amount,
-      date: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
+      customerPhone: fd.phone,
+      customerAddress: fd.address,
+      principalAtPayment: fd.remainingPrincipal ?? fd.principal,
+      interestRatePA: fd.interestRatePA,
+      monthlyPayout: fd.monthlyPayout,
+      tenureMonths: fd.tenureMonths,
+      amount: Number(amount),
+      date,
       dueDate,
+      startDate,
       periodKey,
+      periodLabel,
+      earnedInterest,
+      pendingInterestBefore,
+      pendingInterestAfter,
       mode,
-      status: 'PAID'
+      bankName,
+      transactionReference,
+      upiId,
+      remarks,
+      processedBy,
+      status: 'PAID',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
 
-    await telegramRepository.createRecord('FD_INTEREST_PAYOUT', id, payout, actor);
+    await firestoreRepository.createRecord('FD_INTEREST_PAYOUT', id, payout, actor);
 
     // DayBook Entry
     const isCash = mode === 'Cash';
     try {
       await accountingService.addEntryAsync({
         time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        billNo: `PO-${fdNo}`,
-        particulars: `FD Interest Payout (${fdNo}) - ${fd.depositorName}`,
+        billNo: voucherNumber,
+        particulars: `FD Interest Payment (${fdNo}) - ${fd.depositorName} [${voucherNumber}]`,
         accountHead: 'Interest Paid',
-        mode,
+        mode: isCash ? 'Cash' : (mode === 'UPI' ? 'UPI' : 'Bank'),
         cashIn: 0,
-        cashOut: isCash ? amount : 0,
+        cashOut: isCash ? Number(amount) : 0,
         bankIn: 0,
-        bankOut: isCash ? 0 : amount,
+        bankOut: isCash ? 0 : Number(amount),
         customerName: fd.depositorName,
         date: payout.date
       });
@@ -215,7 +312,7 @@ export class FDService {
   }
 
   public getWithdrawals(): FDWithdrawal[] {
-    return telegramRepository.getRecords<FDWithdrawal>('FD_WITHDRAWAL');
+    return firestoreRepository.getRecords<FDWithdrawal>('FD_WITHDRAWAL');
   }
 
   public async withdraw(
@@ -227,7 +324,7 @@ export class FDService {
     bankName?: string,
     actor?: any
   ): Promise<FDWithdrawal | null> {
-    const targetFD = telegramRepository.getRecordById<FixedDeposit>('FIXED_DEPOSIT', fdNo);
+    const targetFD = firestoreRepository.getRecordById<FixedDeposit>('FIXED_DEPOSIT', fdNo);
     if (!targetFD || !targetFD.data) return null;
 
     const fd = targetFD.data;
@@ -250,7 +347,7 @@ export class FDService {
       updatedAt: new Date().toISOString()
     };
 
-    await telegramRepository.updateRecord('FIXED_DEPOSIT', fdNo, updatedFD, { actor });
+    await firestoreRepository.updateRecord('FIXED_DEPOSIT', fdNo, updatedFD, { actor });
 
     const id = `fd-wd-${Date.now()}`;
     const todayStr = new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
@@ -275,7 +372,7 @@ export class FDService {
       bankName
     };
 
-    await telegramRepository.createRecord('FD_WITHDRAWAL', id, withdrawal, actor);
+    await firestoreRepository.createRecord('FD_WITHDRAWAL', id, withdrawal, actor);
 
     // DayBook Entry
     const isCash = mode === 'Cash';
@@ -306,7 +403,7 @@ export class FDService {
   }
 
   public getRenewals(): FDRenewal[] {
-    return telegramRepository.getRecords<FDRenewal>('FD_RENEWAL');
+    return firestoreRepository.getRecords<FDRenewal>('FD_RENEWAL');
   }
 
   public async renewDeposit(
@@ -315,7 +412,7 @@ export class FDService {
     interestRatePA: number,
     actor?: any
   ): Promise<{ oldFD: FixedDeposit; newFD: FixedDeposit; renewal: FDRenewal } | null> {
-    const targetFD = telegramRepository.getRecordById<FixedDeposit>('FIXED_DEPOSIT', oldFdNo);
+    const targetFD = firestoreRepository.getRecordById<FixedDeposit>('FIXED_DEPOSIT', oldFdNo);
     if (!targetFD || !targetFD.data) return null;
 
     const oldFD = targetFD.data;
@@ -327,7 +424,7 @@ export class FDService {
       status: 'MATURED',
       updatedAt: new Date().toISOString()
     };
-    await telegramRepository.updateRecord('FIXED_DEPOSIT', oldFdNo, updatedOldFD, { actor });
+    await firestoreRepository.updateRecord('FIXED_DEPOSIT', oldFdNo, updatedOldFD, { actor });
 
     // Create new renewed FD
     const newFD = await this.createDeposit({
@@ -375,7 +472,7 @@ export class FDService {
       status: 'COMPLETED'
     };
 
-    await telegramRepository.createRecord('FD_RENEWAL', renewalId, renewal, actor);
+    await firestoreRepository.createRecord('FD_RENEWAL', renewalId, renewal, actor);
 
     return { oldFD: updatedOldFD, newFD, renewal };
   }
@@ -391,7 +488,7 @@ export class FDService {
   public async deleteDeposit(fdNo: string, actor?: any): Promise<boolean> {
     const fd = this.getDepositByNo(fdNo);
     if (!fd) return false;
-    await telegramRepository.deleteRecord('FIXED_DEPOSIT', fdNo, false, actor);
+    await firestoreRepository.deleteRecord('FIXED_DEPOSIT', fdNo, false, actor);
     return true;
   }
 
@@ -405,7 +502,7 @@ export class FDService {
           depositDate = newDepositDate;
         }
         const updatedDoc: FixedDeposit = { ...fd, depositDate, updatedAt: new Date().toISOString() };
-        telegramRepository.updateRecord('FIXED_DEPOSIT', fdNo, updatedDoc).catch(() => {});
+        firestoreRepository.updateRecord('FIXED_DEPOSIT', fdNo, updatedDoc).catch(() => {});
         updated.push(updatedDoc);
       }
     }

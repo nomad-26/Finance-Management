@@ -17,10 +17,12 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
-import { FixedDeposit, Customer, FDWithdrawal, OrnamentItem } from '../types';
+import { FixedDeposit, Customer, FDWithdrawal, OrnamentItem, FDInterestPayout } from '../types';
 import { COMPANY_CONFIG } from '../config/company';
 import { getCanonicalCustomerId, isMatchingCustomerId } from '../utils/customerUtils';
 import { KKVLogo } from '../components/common/KKVLogo';
+import { FDReceiptModal } from '../components/common/FDReceiptModal';
+import { FDInterestReceiptModal } from '../components/common/FDInterestReceiptModal';
 import {
   calculateFDInterestSchedule,
   getAllPendingFDInterestPeriods,
@@ -78,6 +80,8 @@ export const FixedDeposits: React.FC = () => {
     masterControlSettings,
     branchSettings,
     userRole,
+    selectedFDReceipt,
+    setSelectedFDReceipt,
     setSelectedProfileCustomerId,
     showToast
   } = useApp();
@@ -88,6 +92,25 @@ export const FixedDeposits: React.FC = () => {
 
   const [activeSubTab, setActiveSubTab] = useState<string>('new-deposit');
   const [processingFdNos, setProcessingFdNos] = useState<Set<string>>(new Set());
+  const [viewingReceiptFD, setViewingReceiptFD] = useState<FixedDeposit | null>(null);
+  const [viewingInterestPayout, setViewingInterestPayout] = useState<FDInterestPayout | null>(null);
+
+  // Deposit Interest Payment Module State (Customer -> FD -> Payment -> Voucher)
+  const [intCustSearchQuery, setIntCustSearchQuery] = useState<string>('');
+  const [intSelectedCustomer, setIntSelectedCustomer] = useState<Customer | null>(null);
+  const [intSelectedFD, setIntSelectedFD] = useState<FixedDeposit | null>(null);
+  const [intPaymentDate, setIntPaymentDate] = useState<string>(new Date().toLocaleDateString('en-GB').replace(/\//g, '-'));
+  const [intAmount, setIntAmount] = useState<string>('');
+  const [intMode, setIntMode] = useState<'Cash' | 'Bank' | 'UPI'>('Cash');
+  const [intBankName, setIntBankName] = useState<string>('');
+  const [intTxRef, setIntTxRef] = useState<string>('');
+  const [intUpiId, setIntUpiId] = useState<string>('');
+  const [intRemarks, setIntRemarks] = useState<string>('');
+  const [intIsSubmitting, setIntIsSubmitting] = useState<boolean>(false);
+
+  // Interest Display (Ledger) Filters
+  const [intDisplaySearch, setIntDisplaySearch] = useState<string>('');
+  const [intDisplayModeFilter, setIntDisplayModeFilter] = useState<string>('ALL');
 
   // Interest Pending Search, Filter, and Payment Modal state
   const [pendingSearchQuery, setPendingSearchQuery] = useState<string>('');
@@ -366,6 +389,111 @@ export const FixedDeposits: React.FC = () => {
     return fixedDeposits.filter((f) => isMatchingCustomerId(f.customerId, wdSelectedCustomer));
   }, [fixedDeposits, wdSelectedCustomer]);
 
+  // Real-time matching customers for Interest flow
+  const intMatchingCustomers = useMemo(() => {
+    if (!intCustSearchQuery.trim() || intSelectedCustomer) return [];
+    const q = intCustSearchQuery.toLowerCase().trim();
+    return activeCustomers.filter(
+      (c) =>
+        c.id.toLowerCase().includes(q) ||
+        (c.customerId && c.customerId.toString().toLowerCase().includes(q)) ||
+        c.name.toLowerCase().includes(q) ||
+        c.phone.includes(q)
+    );
+  }, [activeCustomers, intCustSearchQuery, intSelectedCustomer]);
+
+  // Active FDs belonging to the interest-selected customer
+  const intCustomerFDs = useMemo(() => {
+    if (!intSelectedCustomer) return [];
+    return fixedDeposits.filter((f) => isMatchingCustomerId(f.customerId, intSelectedCustomer) && f.status === 'ACTIVE');
+  }, [fixedDeposits, intSelectedCustomer]);
+
+  const handleIntSelectFD = (fd: FixedDeposit) => {
+    setIntSelectedFD(fd);
+    const schedule = calculateFDInterestSchedule(fd, fdInterestPayouts);
+    const allPending = getAllPendingFDInterestPeriods([fd], fdInterestPayouts);
+    const totalPending = allPending.reduce((sum, p) => sum + p.amount, 0);
+    const defaultAmt = totalPending > 0 ? totalPending : schedule.payoutAmount;
+    setIntAmount(String(defaultAmt));
+  };
+
+  const handleIntSelectCustomer = (cust: Customer) => {
+    setIntSelectedCustomer(cust);
+    setIntCustSearchQuery(cust.name);
+    const fds = fixedDeposits.filter((f) => isMatchingCustomerId(f.customerId, cust) && f.status === 'ACTIVE');
+    if (fds.length === 1) {
+      handleIntSelectFD(fds[0]);
+    } else {
+      setIntSelectedFD(null);
+      setIntAmount('');
+    }
+  };
+
+  const handleIntClearCustomer = () => {
+    setIntSelectedCustomer(null);
+    setIntCustSearchQuery('');
+    setIntSelectedFD(null);
+    setIntAmount('');
+    setIntMode('Cash');
+    setIntBankName('');
+    setIntTxRef('');
+    setIntUpiId('');
+    setIntRemarks('');
+  };
+
+  const handleIntSubmitPayment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (intIsSubmitting || !intSelectedFD) return;
+
+    const numAmt = parseFloat(intAmount);
+    if (isNaN(numAmt) || numAmt <= 0) {
+      showToast('Please enter a valid interest payout amount.', 'error');
+      return;
+    }
+
+    if (intMode === 'Bank' && !intTxRef.trim()) {
+      showToast('Please enter Bank Transaction Reference / UTR Number.', 'error');
+      return;
+    }
+    if (intMode === 'UPI' && !intTxRef.trim()) {
+      showToast('Please enter UPI Transaction Reference ID.', 'error');
+      return;
+    }
+
+    setIntIsSubmitting(true);
+
+    const schedule = calculateFDInterestSchedule(intSelectedFD, fdInterestPayouts);
+    const allPending = getAllPendingFDInterestPeriods([intSelectedFD], fdInterestPayouts);
+    const totalPending = allPending.reduce((sum, p) => sum + p.amount, 0);
+
+    const payoutResult = payFDInterest(intSelectedFD.fdNo, intMode, numAmt, {
+      paymentDate: intPaymentDate,
+      dueDate: schedule.nextPayoutDate,
+      periodKey: schedule.periodKey,
+      periodLabel: `Interest up to ${schedule.nextPayoutDate}`,
+      earnedInterest: numAmt,
+      pendingInterestBefore: totalPending,
+      pendingInterestAfter: Math.max(0, totalPending - numAmt),
+      bankName: intBankName,
+      transactionReference: intTxRef,
+      upiId: intUpiId,
+      remarks: intRemarks,
+      processedBy: userRole || 'Admin'
+    });
+
+    setIntIsSubmitting(false);
+
+    if (payoutResult && typeof payoutResult === 'object') {
+      setViewingInterestPayout(payoutResult);
+      setIntRemarks('');
+      setIntTxRef('');
+      setIntBankName('');
+      setIntUpiId('');
+      const updatedPending = Math.max(0, totalPending - numAmt);
+      setIntAmount(updatedPending > 0 ? String(updatedPending) : String(schedule.payoutAmount));
+    }
+  };
+
   // Submission lock to prevent duplicate FD creation
   const [isSubmittingFD, setIsSubmittingFD] = useState<boolean>(false);
 
@@ -418,7 +546,7 @@ export const FixedDeposits: React.FC = () => {
       const calculatedMaturityDate = calculateMaturityDate(depositDate, numericTenure);
       const canonicalCustId = getCanonicalCustomerId(selectedCustomer);
 
-      addFixedDeposit({
+      const createdFd = addFixedDeposit({
         customerId: canonicalCustId,
         depositorName: selectedCustomer.name,
         phone: selectedCustomer.phone,
@@ -441,7 +569,10 @@ export const FixedDeposits: React.FC = () => {
         remarks
       });
 
-      showToast(`Fixed Deposit ${nextFdNo} created successfully for ${selectedCustomer.name}!`, 'success');
+      showToast(`Fixed Deposit ${createdFd.fdNo} (Receipt #${createdFd.receiptNumber}) created successfully for ${selectedCustomer.name}!`, 'success');
+
+      // Immediately provide the receipt view / actions
+      setViewingReceiptFD(createdFd);
 
       // Reset Form
       setSelectedCustomer(null);
@@ -908,6 +1039,7 @@ export const FixedDeposits: React.FC = () => {
               <thead>
                 <tr>
                   <th>FD NO</th>
+                  <th>RECEIPT NO</th>
                   <th>CUSTOMER</th>
                   <th>CUSTOMER ID</th>
                   <th>PHONE</th>
@@ -924,7 +1056,7 @@ export const FixedDeposits: React.FC = () => {
               <tbody>
                 {fixedDeposits.length === 0 ? (
                   <tr>
-                    <td colSpan={12} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                    <td colSpan={13} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                       No Fixed Deposits recorded yet in the system.
                     </td>
                   </tr>
@@ -936,6 +1068,7 @@ export const FixedDeposits: React.FC = () => {
                         const q = displaySearchText.toLowerCase().trim();
                         return (
                           f.fdNo.toLowerCase().includes(q) ||
+                          (f.receiptNumber && f.receiptNumber.toLowerCase().includes(q)) ||
                           f.depositorName.toLowerCase().includes(q) ||
                           f.customerId.toLowerCase().includes(q) ||
                           f.phone.includes(q)
@@ -946,9 +1079,15 @@ export const FixedDeposits: React.FC = () => {
                     .map((f) => {
                       const resolved = resolveCustomer(f.customerId, f.depositorName, f.phone);
                       const remaining = f.remainingPrincipal ?? f.principal;
+                      const rcptDisplay = f.receiptNumber || `FD-RCPT-${f.fdNo.replace(/^FD-?/i, '')}`;
                       return (
                         <tr key={f.id}>
                           <td style={{ fontWeight: 800, color: 'var(--color-primary-dark)' }}>{f.fdNo}</td>
+                          <td>
+                            <span className="badge badge-success" style={{ fontSize: '11px', letterSpacing: '0.2px', fontWeight: 700 }}>
+                              {rcptDisplay}
+                            </span>
+                          </td>
                           <td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               {resolved.photo ? (
@@ -980,6 +1119,16 @@ export const FixedDeposits: React.FC = () => {
                           </td>
                           <td style={{ textAlign: 'center' }}>
                             <div style={{ display: 'inline-flex', gap: '6px' }}>
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-primary"
+                                style={{ height: '28px', padding: '0 8px', fontSize: '11px', gap: '4px', fontWeight: 700 }}
+                                onClick={() => setViewingReceiptFD(f)}
+                                title="View & Print Official Fixed Deposit Receipt"
+                              >
+                                <Printer size={12} />
+                                <span>Receipt</span>
+                              </button>
                               <button
                                 type="button"
                                 className="btn btn-secondary btn-sm"
@@ -1020,205 +1169,663 @@ export const FixedDeposits: React.FC = () => {
         </div>
       )}
 
-      {/* SUBVIEW 3: DEPOSIT INTEREST (DISBURSEMENT SCHEDULE & TABLE) */}
+      {/* SUBVIEW 3: DEPOSIT INTEREST (CUSTOMER -> FD -> PAYMENT -> VOUCHER FLOW) */}
       {activeSubTab === 'deposit-interest' && (
         <div className="card" style={{ padding: '24px' }}>
-          <div className="card-header" style={{ marginBottom: '16px' }}>
+          <div className="card-header" style={{ marginBottom: '20px' }}>
             <div>
-              <h2 className="card-title" style={{ fontSize: '18px', fontWeight: 800 }}>Disburse FD Monthly Interest</h2>
+              <h2 className="card-title" style={{ fontSize: '18px', fontWeight: 800 }}>Disburse Fixed Deposit Interest</h2>
               <p className="card-description">
-                Schedule and record interest payouts for active fixed deposits based on contractual deposit date cycles.
+                Search customer, select active Fixed Deposit, review calculated interest schedule, and record payout voucher.
               </p>
             </div>
           </div>
 
-          <div className="table-container" style={{ width: '100%', maxWidth: '100%', overflowX: 'auto' }}>
-            <table className="custom-table" style={{ minWidth: '1100px', width: '100%', tableLayout: 'fixed' }}>
-              <thead>
-                <tr>
-                  <th style={{ width: '90px' }}>FD NO</th>
-                  <th style={{ width: '170px' }}>CUSTOMER</th>
-                  <th style={{ width: '110px' }}>CUSTOMER ID</th>
-                  <th style={{ width: '130px' }}>ORIGINAL PRINCIPAL</th>
-                  <th style={{ width: '130px' }}>REMAINING BAL</th>
-                  <th style={{ width: '130px' }}>MONTHLY PAYOUT</th>
-                  <th style={{ width: '110px' }}>NEXT PAYOUT</th>
-                  <th style={{ width: '130px' }}>PAYMENT MODE</th>
-                  <th style={{ width: '130px' }}>STATUS</th>
-                  <th style={{ width: '140px', textAlign: 'center' }}>ACTION</th>
-                </tr>
-              </thead>
-              <tbody>
-                {fixedDeposits.filter((f) => f.status === 'ACTIVE').length === 0 ? (
-                  <tr>
-                    <td colSpan={10} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
-                      No active Fixed Deposits available for interest disbursement.
-                    </td>
-                  </tr>
+          {/* STEP 1: CUSTOMER SELECTION */}
+          <div
+            style={{
+              padding: '18px',
+              backgroundColor: 'var(--bg-surface-secondary, #f8fafc)',
+              borderRadius: '12px',
+              border: '1px solid var(--border-light, #e2e8f0)',
+              marginBottom: '20px'
+            }}
+          >
+            <label className="form-label required" style={{ fontSize: '12px', fontWeight: 800, color: 'var(--color-primary-dark)' }}>
+              1. SEARCH &amp; SELECT DEPOSITOR / CUSTOMER *
+            </label>
+            <div style={{ position: 'relative', marginTop: '6px' }}>
+              <input
+                type="text"
+                className="input-control"
+                style={{ height: '42px', paddingLeft: '38px', fontSize: '13px' }}
+                placeholder="Search Customer ID, Name, or Mobile Number (e.g. CUST-006, Sanjai, 8637628773)..."
+                value={intCustSearchQuery}
+                onChange={(e) => {
+                  setIntCustSearchQuery(e.target.value);
+                  if (intSelectedCustomer) setIntSelectedCustomer(null);
+                }}
+              />
+              <Search
+                size={16}
+                style={{
+                  position: 'absolute',
+                  left: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--text-muted)'
+                }}
+              />
+            </div>
+
+            {/* Suggestions dropdown */}
+            {!intSelectedCustomer && intCustSearchQuery.trim() !== '' && (
+              <div
+                style={{
+                  marginTop: '8px',
+                  backgroundColor: 'var(--bg-card, #ffffff)',
+                  border: '1px solid var(--border-light, #e2e8f0)',
+                  borderRadius: '8px',
+                  maxHeight: '220px',
+                  overflowY: 'auto',
+                  boxShadow: 'var(--shadow-md)'
+                }}
+              >
+                {intMatchingCustomers.length === 0 ? (
+                  <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+                    <AlertCircle size={16} color="var(--color-danger, #ef4444)" style={{ display: 'inline', marginRight: '6px' }} />
+                    Customer not found. Please enter a valid customer identifier.
+                  </div>
                 ) : (
-                  fixedDeposits.filter((f) => f.status === 'ACTIVE').map((f) => {
-                    const resolved = resolveCustomer(f.customerId, f.depositorName, f.phone);
-                    const remaining = f.remainingPrincipal ?? f.principal;
-                    const schedule = calculateFDInterestSchedule(f, fdInterestPayouts);
-                    const isProcessing = processingFdNos.has(f.fdNo);
-
+                  intMatchingCustomers.map((c) => {
+                    const custFds = fixedDeposits.filter((f) => isMatchingCustomerId(f.customerId, c) && f.status === 'ACTIVE');
                     return (
-                      <tr key={f.id}>
-                        <td style={{ fontWeight: 800, color: 'var(--color-primary-dark)' }}>{f.fdNo}</td>
-                        <td style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={resolved.name}>
-                          {resolved.name}
-                        </td>
-                        <td>
-                          <span className="badge badge-info" style={{ fontSize: '11px', fontWeight: 600 }}>
-                            {resolved.id}
-                          </span>
-                        </td>
-                        <td>₹{f.principal.toLocaleString('en-IN')}</td>
-                        <td style={{ fontWeight: 700 }}>₹{remaining.toLocaleString('en-IN')}</td>
-                        <td style={{ fontWeight: 800, color: 'var(--color-primary-dark)' }}>
-                          ₹{schedule.payoutAmount.toLocaleString('en-IN')}
-                        </td>
-                        <td style={{ fontWeight: 700, color: schedule.isEligible ? 'var(--color-primary-accent, #059669)' : 'var(--text-dark)' }}>
-                          {schedule.nextPayoutDate}
-                        </td>
-                        <td>
-                          <select id={`mode-${f.id}`} className="input-control" style={{ padding: '4px 8px', fontSize: '12px' }}>
-                            <option value="Cash">Cash Account</option>
-                            <option value="Bank">Bank Transfer</option>
-                            <option value="UPI">UPI Payment</option>
-                          </select>
-                        </td>
-                        <td>
-                          {schedule.status === 'NOT_DUE' && (
-                            <span className="badge" style={{ backgroundColor: 'var(--bg-surface-secondary)', color: 'var(--text-secondary)', fontSize: '11px', fontWeight: 700 }}>
-                              NOT YET DUE
-                            </span>
-                          )}
-                          {schedule.status === 'DUE' && (
-                            <span className="badge badge-success" style={{ fontSize: '11px', fontWeight: 800 }}>
-                              ✓ INTEREST DUE
-                            </span>
-                          )}
-                          {schedule.status === 'OVERDUE' && (
-                            <span className="badge badge-warning" style={{ fontSize: '11px', fontWeight: 800 }}>
-                              ⚠ OVERDUE ({schedule.daysPending}d)
-                            </span>
-                          )}
-                          {schedule.status === 'WITHDRAWN' && (
-                            <span className="badge badge-danger" style={{ fontSize: '11px', fontWeight: 800 }}>
-                              WITHDRAWN
-                            </span>
-                          )}
-                          {schedule.status === 'MATURED' && (
-                            <span className="badge badge-info" style={{ fontSize: '11px', fontWeight: 800 }}>
-                              MATURED
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <button
-                            type="button"
-                            className={`btn btn-sm ${schedule.isEligible ? 'btn-primary' : 'btn-secondary'}`}
+                      <div
+                        key={c.id}
+                        onClick={() => handleIntSelectCustomer(c)}
+                        style={{
+                          padding: '10px 14px',
+                          borderBottom: '1px solid var(--border-subtle, #f1f5f9)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          transition: 'background-color 0.15s ease'
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-surface-secondary, #f8fafc)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ffffff')}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div
                             style={{
-                              height: '30px',
-                              padding: '0 12px',
-                              fontWeight: 700,
-                              opacity: schedule.isEligible && !isProcessing ? 1 : 0.6,
-                              cursor: schedule.isEligible && !isProcessing ? 'pointer' : 'not-allowed'
-                            }}
-                            disabled={!schedule.isEligible || isProcessing}
-                            title={schedule.isEligible ? 'Click to disburse interest' : schedule.statusText}
-                            onClick={() => {
-                              if (!schedule.isEligible || isProcessing) return;
-                              const selectEl = document.getElementById(`mode-${f.id}`) as HTMLSelectElement;
-                              const mode = (selectEl?.value || 'Cash') as 'Cash' | 'Bank' | 'UPI';
-
-                              setProcessingFdNos((prev) => new Set(prev).add(f.fdNo));
-                              payFDInterest(f.fdNo, mode, schedule.payoutAmount, schedule.nextPayoutDate, schedule.periodKey);
-                              setProcessingFdNos((prev) => {
-                                const next = new Set(prev);
-                                next.delete(f.fdNo);
-                                return next;
-                              });
+                              width: '32px',
+                              height: '32px',
+                              borderRadius: '50%',
+                              backgroundColor: 'var(--color-light-accent, #e6fffa)',
+                              color: 'var(--color-primary-dark, #064e3b)',
+                              fontWeight: 800,
+                              fontSize: '13px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
                             }}
                           >
-                            {isProcessing
-                              ? 'Processing...'
-                              : schedule.isEligible
-                              ? 'Disburse Interest'
-                              : 'Not Due'}
-                          </button>
-                        </td>
-                      </tr>
+                            {c.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <span style={{ fontWeight: 700, fontSize: '13.5px', color: 'var(--text-dark)' }}>{c.name}</span>
+                            <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: '8px' }}>+91 {c.phone}</span>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span className="badge badge-info" style={{ fontSize: '11px', fontWeight: 600 }}>{c.id}</span>
+                          <span className="badge" style={{ backgroundColor: custFds.length > 0 ? '#ecfdf5' : '#f1f5f9', color: custFds.length > 0 ? '#047857' : '#64748b', fontSize: '11px', fontWeight: 700 }}>
+                            {custFds.length} Active FD{custFds.length === 1 ? '' : 's'}
+                          </span>
+                        </div>
+                      </div>
                     );
                   })
                 )}
-              </tbody>
-            </table>
+              </div>
+            )}
+
+            {/* Selected Customer Card */}
+            {intSelectedCustomer && (
+              <div
+                style={{
+                  marginTop: '14px',
+                  padding: '16px',
+                  backgroundColor: 'var(--bg-card, #ffffff)',
+                  borderRadius: '10px',
+                  border: '1.5px solid var(--color-primary-accent, #059669)',
+                  boxShadow: 'var(--shadow-sm)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div
+                      style={{
+                        width: '46px',
+                        height: '46px',
+                        borderRadius: '50%',
+                        backgroundColor: 'var(--color-light-accent, #e6fffa)',
+                        color: 'var(--color-primary-dark, #064e3b)',
+                        fontWeight: 800,
+                        fontSize: '18px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                    >
+                      {intSelectedCustomer.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-dark)' }}>{intSelectedCustomer.name}</h3>
+                        <span className="badge badge-success" style={{ fontSize: '10px' }}>✓ VERIFIED DEPOSITOR</span>
+                      </div>
+                      <div style={{ fontSize: '12.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        Customer ID: <strong style={{ color: 'var(--color-primary-dark)' }}>{intSelectedCustomer.id}</strong> | Phone: <strong>+91 {intSelectedCustomer.phone}</strong> | Address: {intSelectedCustomer.currentAddress || 'On file'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: '12px', height: '32px', gap: '4px' }}
+                      onClick={() => {
+                        setSelectedProfileCustomerId(intSelectedCustomer.id);
+                        setCurrentPage('customer-profile');
+                      }}
+                    >
+                      <Eye size={13} />
+                      <span>Customer Profile</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: '12px', height: '32px', gap: '4px', color: 'var(--color-danger, #ef4444)' }}
+                      onClick={handleIntClearCustomer}
+                    >
+                      <RotateCcw size={13} />
+                      <span>Change</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* STEP 2: SELECT ACTIVE FIXED DEPOSIT */}
+          {intSelectedCustomer && (
+            <div style={{ marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '13px', fontWeight: 800, color: 'var(--color-primary-dark)', margin: '0 0 10px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                2. SELECT ACTIVE FIXED DEPOSIT
+              </h3>
+
+              {intCustomerFDs.length === 0 ? (
+                <div style={{ padding: '24px', textAlign: 'center', backgroundColor: '#fffbeb', borderRadius: '8px', border: '1px solid #fef3c7', color: '#b45309', fontSize: '13px' }}>
+                  <AlertCircle size={18} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
+                  This customer has no active Fixed Deposits available for interest payout.
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '12px' }}>
+                  {intCustomerFDs.map((fd) => {
+                    const isSelected = intSelectedFD?.fdNo === fd.fdNo;
+                    const remaining = fd.remainingPrincipal ?? fd.principal;
+                    const schedule = calculateFDInterestSchedule(fd, fdInterestPayouts);
+                    const allPending = getAllPendingFDInterestPeriods([fd], fdInterestPayouts);
+                    const pendingTotal = allPending.reduce((sum, p) => sum + p.amount, 0);
+
+                    return (
+                      <div
+                        key={fd.id}
+                        onClick={() => handleIntSelectFD(fd)}
+                        style={{
+                          padding: '14px',
+                          borderRadius: '10px',
+                          border: isSelected ? '2px solid #059669' : '1px solid #e2e8f0',
+                          backgroundColor: isSelected ? '#f0fdf4' : '#ffffff',
+                          cursor: 'pointer',
+                          boxShadow: isSelected ? '0 4px 12px rgba(5, 150, 105, 0.12)' : '0 1px 3px rgba(0,0,0,0.05)',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: 800, color: '#064e3b', fontSize: '14px' }}>{fd.fdNo}</span>
+                          <span
+                            className="badge"
+                            style={{
+                              backgroundColor: schedule.isEligible ? '#dcfce7' : '#f1f5f9',
+                              color: schedule.isEligible ? '#047857' : '#64748b',
+                              fontSize: '11px',
+                              fontWeight: 800
+                            }}
+                          >
+                            {schedule.status === 'DUE' ? '✓ DUE TODAY' : schedule.status === 'OVERDUE' ? `⚠ OVERDUE (${schedule.daysPending}d)` : 'NOT YET DUE'}
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '12px' }}>
+                          <div>
+                            <span style={{ color: '#64748b' }}>Active Principal: </span>
+                            <strong style={{ color: '#0f172a' }}>₹{remaining.toLocaleString('en-IN')}</strong>
+                          </div>
+                          <div>
+                            <span style={{ color: '#64748b' }}>Monthly Payout: </span>
+                            <strong style={{ color: '#047857' }}>₹{fd.monthlyPayout.toLocaleString('en-IN')}</strong>
+                          </div>
+                          <div>
+                            <span style={{ color: '#64748b' }}>Interest Rate: </span>
+                            <strong>{fd.interestRatePA}% p.a.</strong>
+                          </div>
+                          <div>
+                            <span style={{ color: '#64748b' }}>Deposit Date: </span>
+                            <span>{fd.depositDate}</span>
+                          </div>
+                          <div style={{ gridColumn: 'span 2', marginTop: '4px', borderTop: '1px dashed #cbd5e1', paddingTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: '#64748b' }}>Pending Interest (to date): </span>
+                            <strong style={{ color: pendingTotal > 0 ? '#d97706' : '#059669' }}>₹{pendingTotal.toLocaleString('en-IN')}</strong>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* STEP 3 & 4: INTEREST CALCULATION & PAYMENT FORM */}
+          {intSelectedCustomer && intSelectedFD && (() => {
+            const schedule = calculateFDInterestSchedule(intSelectedFD, fdInterestPayouts);
+            const allPending = getAllPendingFDInterestPeriods([intSelectedFD], fdInterestPayouts);
+            const totalPending = allPending.reduce((sum, p) => sum + p.amount, 0);
+            const remainingPrincipal = intSelectedFD.remainingPrincipal ?? intSelectedFD.principal;
+
+            return (
+              <form onSubmit={handleIntSubmitPayment} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                {/* 3. CALCULATION SUMMARY BANNER */}
+                <div
+                  style={{
+                    backgroundColor: '#ecfdf5',
+                    border: '1.5px solid #a7f3d0',
+                    borderRadius: '10px',
+                    padding: '16px 20px',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                    gap: '12px'
+                  }}
+                >
+                  <div>
+                    <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>
+                      ACTIVE PRINCIPAL
+                    </span>
+                    <div style={{ fontSize: '16px', fontWeight: 900, color: '#064e3b', marginTop: '2px' }}>
+                      ₹{remainingPrincipal.toLocaleString('en-IN')}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#64748b' }}>@ {intSelectedFD.interestRatePA}% p.a.</div>
+                  </div>
+
+                  <div>
+                    <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>
+                      MONTHLY COMMITMENT
+                    </span>
+                    <div style={{ fontSize: '16px', fontWeight: 900, color: '#047857', marginTop: '2px' }}>
+                      ₹{intSelectedFD.monthlyPayout.toLocaleString('en-IN')} / mo
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#64748b' }}>Due cycle: {schedule.nextPayoutDate}</div>
+                  </div>
+
+                  <div>
+                    <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>
+                      TOTAL PENDING INTEREST
+                    </span>
+                    <div style={{ fontSize: '18px', fontWeight: 900, color: totalPending > 0 ? '#d97706' : '#059669', marginTop: '2px' }}>
+                      ₹{totalPending.toLocaleString('en-IN')}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#64748b' }}>{allPending.length} unpaid period{allPending.length === 1 ? '' : 's'}</div>
+                  </div>
+
+                  <div>
+                    <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>
+                      SCHEDULE STATUS
+                    </span>
+                    <div style={{ marginTop: '4px' }}>
+                      <span
+                        className="badge"
+                        style={{
+                          backgroundColor: schedule.status === 'OVERDUE' ? '#fef2f2' : schedule.status === 'DUE' ? '#dcfce7' : '#f1f5f9',
+                          color: schedule.status === 'OVERDUE' ? '#b91c1c' : schedule.status === 'DUE' ? '#047857' : '#64748b',
+                          fontSize: '11.5px',
+                          fontWeight: 800
+                        }}
+                      >
+                        {schedule.statusText}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. PAYMENT DETAILS FORM */}
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '18px', backgroundColor: '#ffffff' }}>
+                  <h3 style={{ fontSize: '13px', fontWeight: 800, color: '#064e3b', margin: '0 0 14px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    3. PAYMENT SETTLEMENT &amp; VOUCHER DETAILS
+                  </h3>
+
+                  <div className="grid-3" style={{ marginBottom: '14px' }}>
+                    <div className="form-group">
+                      <label className="form-label required">PAYOUT DATE</label>
+                      <input
+                        type="text"
+                        className="input-control"
+                        placeholder="DD-MM-YYYY"
+                        value={intPaymentDate}
+                        onChange={(e) => setIntPaymentDate(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label required">PAYOUT AMOUNT (₹)</label>
+                      <input
+                        type="number"
+                        className="input-control"
+                        min="1"
+                        step="1"
+                        value={intAmount}
+                        onChange={(e) => setIntAmount(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label required">PAYMENT METHOD</label>
+                      <select
+                        className="input-control"
+                        value={intMode}
+                        onChange={(e) => setIntMode(e.target.value as any)}
+                      >
+                        <option value="Cash">Cash Account</option>
+                        <option value="Bank">Bank Transfer (NEFT/RTGS/IMPS)</option>
+                        <option value="UPI">UPI Payment</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {intMode === 'Bank' && (
+                    <div className="grid-2" style={{ marginBottom: '14px', backgroundColor: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <div className="form-group">
+                        <label className="form-label">BANK NAME</label>
+                        <input
+                          type="text"
+                          className="input-control"
+                          placeholder="e.g. State Bank of India, HDFC"
+                          value={intBankName}
+                          onChange={(e) => setIntBankName(e.target.value)}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label required">TRANSACTION REFERENCE / UTR NO</label>
+                        <input
+                          type="text"
+                          className="input-control"
+                          placeholder="Enter UTR reference number"
+                          value={intTxRef}
+                          onChange={(e) => setIntTxRef(e.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {intMode === 'UPI' && (
+                    <div className="grid-2" style={{ marginBottom: '14px', backgroundColor: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <div className="form-group">
+                        <label className="form-label required">UPI TRANSACTION ID / REF</label>
+                        <input
+                          type="text"
+                          className="input-control"
+                          placeholder="Enter UPI Transaction Reference"
+                          value={intTxRef}
+                          onChange={(e) => setIntTxRef(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">UPI VPA / ID (OPTIONAL)</label>
+                        <input
+                          type="text"
+                          className="input-control"
+                          placeholder="e.g. depositor@upi"
+                          value={intUpiId}
+                          onChange={(e) => setIntUpiId(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="form-group">
+                    <label className="form-label">REMARKS / INTERNAL NOTES (OPTIONAL)</label>
+                    <input
+                      type="text"
+                      className="input-control"
+                      placeholder="e.g. Monthly dividend payout for September 2026"
+                      value={intRemarks}
+                      onChange={(e) => setIntRemarks(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* SUBMIT BUTTON */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '10px' }}>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={intIsSubmitting}
+                    style={{
+                      padding: '10px 24px',
+                      fontSize: '14px',
+                      fontWeight: 800,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    <Printer size={16} />
+                    <span>{intIsSubmitting ? 'Processing Payout...' : `Pay Interest & Issue Voucher (₹${(parseFloat(intAmount) || 0).toLocaleString('en-IN')})`}</span>
+                  </button>
+                </div>
+              </form>
+            );
+          })()}
         </div>
       )}
 
       {/* SUBVIEW 4: INTEREST DISPLAY (PAID HISTORICAL LEDGER) */}
-      {activeSubTab === 'interest-display' && (
-        <div className="card" style={{ padding: '24px' }}>
-          <div className="card-header" style={{ marginBottom: '16px' }}>
-            <div>
-              <h2 className="card-title" style={{ fontSize: '18px', fontWeight: 800 }}>FD Interest Payout Ledger</h2>
-              <p className="card-description">Historical ledger of processed monthly dividend payments to depositors</p>
+      {activeSubTab === 'interest-display' && (() => {
+        const filteredPayouts = fdInterestPayouts.filter((p) => {
+          const q = intDisplaySearch.trim().toLowerCase();
+          if (q) {
+            const matchVoucher = p.voucherNumber ? p.voucherNumber.toLowerCase().includes(q) : false;
+            const matchFd = p.fdNo ? p.fdNo.toLowerCase().includes(q) : false;
+            const matchCustId = p.customerId ? p.customerId.toLowerCase().includes(q) : false;
+            const matchName = p.depositorName ? p.depositorName.toLowerCase().includes(q) : false;
+            const matchPhone = p.customerPhone ? p.customerPhone.toLowerCase().includes(q) : false;
+            if (!matchVoucher && !matchFd && !matchCustId && !matchName && !matchPhone) return false;
+          }
+          if (intDisplayModeFilter !== 'ALL') {
+            if (p.mode !== intDisplayModeFilter) return false;
+          }
+          return true;
+        });
+
+        const totalDisbursed = fdInterestPayouts.reduce((sum, p) => sum + p.amount, 0);
+
+        return (
+          <div className="card" style={{ padding: '24px' }}>
+            <div className="card-header" style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h2 className="card-title" style={{ fontSize: '18px', fontWeight: 800 }}>FD Interest Payout Ledger</h2>
+                <p className="card-description">Official historical record and receipt voucher log of all disbursed FD dividend payments</p>
+              </div>
+              <div
+                style={{
+                  backgroundColor: '#ecfdf5',
+                  border: '1px solid #a7f3d0',
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  textAlign: 'right'
+                }}
+              >
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#047857', textTransform: 'uppercase' }}>TOTAL INTEREST DISBURSED</div>
+                <div style={{ fontSize: '18px', fontWeight: 900, color: '#064e3b' }}>₹{totalDisbursed.toLocaleString('en-IN')}</div>
+              </div>
+            </div>
+
+            {/* SEARCH & FILTER BAR */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '14px', marginBottom: '18px', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: '280px', position: 'relative' }}>
+                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input
+                  type="text"
+                  className="input-control"
+                  style={{ paddingLeft: '36px' }}
+                  placeholder="Search by Voucher No (INT-RCPT-...), FD No, Customer ID, Name, or Mobile..."
+                  value={intDisplaySearch}
+                  onChange={(e) => setIntDisplaySearch(e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>Payment Mode:</span>
+                <select
+                  className="input-control"
+                  style={{ width: 'auto', padding: '6px 12px', fontSize: '12.5px' }}
+                  value={intDisplayModeFilter}
+                  onChange={(e) => setIntDisplayModeFilter(e.target.value)}
+                >
+                  <option value="ALL">All Modes ({fdInterestPayouts.length})</option>
+                  <option value="Cash">Cash Account</option>
+                  <option value="Bank">Bank Transfer</option>
+                  <option value="UPI">UPI</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="table-container" style={{ width: '100%', maxWidth: '100%', overflowX: 'auto' }}>
+              <table className="custom-table" style={{ minWidth: '1050px', width: '100%', tableLayout: 'fixed' }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: '140px' }}>VOUCHER NO</th>
+                    <th style={{ width: '105px' }}>PAYOUT DATE</th>
+                    <th style={{ width: '90px' }}>FD NO</th>
+                    <th style={{ width: '170px' }}>CUSTOMER</th>
+                    <th style={{ width: '105px' }}>CUSTOMER ID</th>
+                    <th style={{ width: '160px' }}>PERIOD COVERED</th>
+                    <th style={{ width: '125px' }}>INTEREST PAID</th>
+                    <th style={{ width: '120px' }}>MODE &amp; REF</th>
+                    <th style={{ width: '90px' }}>STATUS</th>
+                    <th style={{ width: '150px', textAlign: 'center' }}>ACTION</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPayouts.length > 0 ? (
+                    filteredPayouts.map((p) => {
+                      const targetFd = fixedDeposits.find((f) => f.fdNo === p.fdNo || f.id === p.fdId);
+                      const resolvedCust = resolveCustomer(p.customerId || targetFd?.customerId || '', p.depositorName, p.customerPhone || '');
+                      const voucherDisplay = p.voucherNumber || p.payoutId || `INT-${p.fdNo}`;
+
+                      return (
+                        <tr key={p.id}>
+                          <td>
+                            <span
+                              style={{
+                                backgroundColor: '#ecfdf5',
+                                color: '#047857',
+                                border: '1px solid #a7f3d0',
+                                padding: '3px 8px',
+                                borderRadius: '4px',
+                                fontWeight: 800,
+                                fontSize: '11.5px',
+                                letterSpacing: '0.3px',
+                                display: 'inline-block'
+                              }}
+                            >
+                              {voucherDisplay}
+                            </span>
+                          </td>
+                          <td style={{ fontWeight: 600 }}>{p.date}</td>
+                          <td style={{ fontWeight: 800, color: '#064e3b' }}>{p.fdNo}</td>
+                          <td style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={resolvedCust.name}>
+                            {resolvedCust.name}
+                          </td>
+                          <td>
+                            <span className="badge badge-info" style={{ fontSize: '11px', fontWeight: 600 }}>
+                              {resolvedCust.id}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: '11.5px', color: '#475569' }}>
+                            {p.periodLabel || (p.dueDate ? `Due ${p.dueDate}` : p.date)}
+                          </td>
+                          <td style={{ fontWeight: 800, color: '#047857', fontSize: '13px' }}>
+                            ₹{p.amount.toLocaleString('en-IN')}
+                          </td>
+                          <td style={{ fontSize: '12px' }}>
+                            <span style={{ fontWeight: 600 }}>{p.mode}</span>
+                            {p.bankName ? <div style={{ fontSize: '10.5px', color: '#64748b' }}>{p.bankName}</div> : null}
+                            {p.transactionReference ? <div style={{ fontSize: '10px', color: '#0284c7' }}>Ref: {p.transactionReference}</div> : null}
+                          </td>
+                          <td>
+                            <span className="badge badge-success" style={{ fontWeight: 800, fontSize: '10.5px' }}>
+                              🟢 PAID
+                            </span>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-primary"
+                                style={{ height: '28px', padding: '0 8px', fontSize: '11px', gap: '4px', fontWeight: 700 }}
+                                onClick={() => setViewingInterestPayout(p)}
+                                title="View & Print Official Interest Voucher Receipt"
+                              >
+                                <Printer size={12} />
+                                <span>Receipt</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{ height: '28px', padding: '0 8px', fontSize: '11px', gap: '4px', fontWeight: 600 }}
+                                onClick={() => {
+                                  setSelectedProfileCustomerId(resolvedCust.id);
+                                  setCurrentPage('customer-profile');
+                                }}
+                              >
+                                <Eye size={12} />
+                                <span>Customer</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={10} style={{ textAlign: 'center', padding: '35px', color: 'var(--text-muted)' }}>
+                        No interest payouts matching the search criteria.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
-
-          <div className="table-container" style={{ width: '100%', maxWidth: '100%', overflowX: 'auto' }}>
-            <table className="custom-table" style={{ minWidth: '950px', width: '100%', tableLayout: 'fixed' }}>
-              <thead>
-                <tr>
-                  <th style={{ width: '110px' }}>PAYOUT DATE</th>
-                  <th style={{ width: '110px' }}>DUE DATE</th>
-                  <th style={{ width: '90px' }}>FD NO</th>
-                  <th style={{ width: '180px' }}>CUSTOMER</th>
-                  <th style={{ width: '110px' }}>CUSTOMER ID</th>
-                  <th style={{ width: '130px' }}>PAYOUT AMOUNT</th>
-                  <th style={{ width: '120px' }}>PAYMENT MODE</th>
-                  <th style={{ width: '100px' }}>STATUS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {fdInterestPayouts.length > 0 ? (
-                  fdInterestPayouts.map((p) => {
-                    const targetFd = fixedDeposits.find((f) => f.fdNo === p.fdNo || f.id === p.fdId);
-                    const resolvedCust = resolveCustomer(p.customerId || targetFd?.customerId || '', p.depositorName, '');
-                    return (
-                      <tr key={p.id}>
-                        <td>{p.date}</td>
-                        <td style={{ fontWeight: 700, color: 'var(--color-primary-dark)' }}>{p.dueDate || p.date}</td>
-                        <td style={{ fontWeight: 800, color: 'var(--color-primary-dark)' }}>{p.fdNo}</td>
-                        <td style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={resolvedCust.name}>
-                          {resolvedCust.name}
-                        </td>
-                        <td>
-                          <span className="badge badge-info" style={{ fontSize: '11px', fontWeight: 600 }}>
-                            {resolvedCust.id}
-                          </span>
-                        </td>
-                        <td style={{ fontWeight: 800, color: 'var(--color-primary-dark)' }}>₹{p.amount.toLocaleString('en-IN')}</td>
-                        <td>{p.mode || 'Cash'}</td>
-                        <td><span className="badge badge-success" style={{ fontWeight: 800 }}>🟢 PAID</span></td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan={8} style={{ textAlign: 'center', padding: '35px', color: 'var(--text-muted)' }}>
-                      No interest payouts recorded yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* SUBVIEW 5: INTEREST PENDING (MULTI-PERIOD DYNAMIC SCHEDULING) */}
       {activeSubTab === 'interest-pending' && (() => {
@@ -1503,12 +2110,20 @@ export const FixedDeposits: React.FC = () => {
                         }
 
                         setProcessingFdNos((prev) => new Set(prev).add(payingPeriod.fdNo));
-                        const success = payFDInterest(
+                        const payoutResult = payFDInterest(
                           payingPeriod.fdNo,
                           payPendingMode,
                           payingPeriod.amount,
-                          payingPeriod.dueDate,
-                          payingPeriod.periodKey
+                          {
+                            dueDate: payingPeriod.dueDate,
+                            periodKey: payingPeriod.periodKey,
+                            periodLabel: payingPeriod.periodLabel,
+                            earnedInterest: payingPeriod.amount,
+                            bankName: payPendingBankName,
+                            transactionReference: payPendingTxRef,
+                            upiId: payPendingUpiId,
+                            processedBy: userRole || 'Admin'
+                          }
                         );
                         setProcessingFdNos((prev) => {
                           const next = new Set(prev);
@@ -1516,11 +2131,12 @@ export const FixedDeposits: React.FC = () => {
                           return next;
                         });
 
-                        if (success) {
+                        if (payoutResult && typeof payoutResult === 'object') {
                           setPayingPeriod(null);
                           setPayPendingTxRef('');
                           setPayPendingBankName('');
                           setPayPendingUpiId('');
+                          setViewingInterestPayout(payoutResult);
                         }
                       }}
                     >
@@ -2939,6 +3555,25 @@ export const FixedDeposits: React.FC = () => {
           </>
         );
       })()}
+
+      {/* FIXED DEPOSIT RECEIPT MODAL */}
+      {(viewingReceiptFD || selectedFDReceipt) && (
+        <FDReceiptModal
+          fd={viewingReceiptFD || selectedFDReceipt!}
+          onClose={() => {
+            setViewingReceiptFD(null);
+            setSelectedFDReceipt(null);
+          }}
+        />
+      )}
+
+      {/* FIXED DEPOSIT INTEREST RECEIPT MODAL */}
+      {viewingInterestPayout && (
+        <FDInterestReceiptModal
+          payout={viewingInterestPayout}
+          onClose={() => setViewingInterestPayout(null)}
+        />
+      )}
     </div>
   );
 };

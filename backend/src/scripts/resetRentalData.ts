@@ -4,7 +4,7 @@ import { getStorageSubdirectory } from '../config/storage.js';
 import { rentalRepository } from '../modules/rental/repositories/rental.repository.js';
 import { rentalDayBookRepository } from '../modules/rental/repositories/rentalDayBook.repository.js';
 import { seedUsers } from './seedAdmin.js';
-import { telegramRepository } from '../telegram/telegram.repository.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
 
 export interface RentalResetReport {
   success: boolean;
@@ -82,8 +82,8 @@ export async function executeRentalDataReset(): Promise<RentalResetReport> {
     console.warn('Notice cleaning temp files:', cleanErr);
   }
 
-  // 3. Clear Telegram Rental operational records
-  console.log('\n[3/4] Clearing Telegram rental operational records...');
+  // 3. Clear Cloud Firestore Rental operational records
+  console.log('\n[3/4] Clearing Cloud Firestore rental operational records...');
   try {
     const rentalTypes = [
       'RENTAL_COMPLEX',
@@ -95,14 +95,14 @@ export async function executeRentalDataReset(): Promise<RentalResetReport> {
     ] as any[];
 
     for (const entityType of rentalTypes) {
-      const records = telegramRepository.getRecords(entityType);
+      const records = firestoreRepository.getRecords(entityType);
       for (const r of records) {
-        await telegramRepository.deleteRecord(entityType, r.id, false);
+        await firestoreRepository.deleteRecord(entityType, r.id, false);
       }
     }
-    console.log('✓ Telegram rental operational records cleared.');
+    console.log('✓ Cloud Firestore rental operational records cleared.');
   } catch (tErr) {
-    console.warn('Warning clearing Telegram rental records:', tErr);
+    console.warn('Warning clearing Cloud Firestore rental records:', tErr);
   }
 
   // 4. Verify & Preserve Authentication Accounts

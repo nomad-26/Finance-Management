@@ -23,6 +23,17 @@ export interface DesktopAPI {
   isMaximized: () => Promise<boolean>;
   getApiBaseUrl?: () => Promise<string>;
   apiBaseUrl?: string;
+  openLogsFolder: () => Promise<string>;
+  showSaveBackupDialog: (defaultName?: string) => Promise<string | null>;
+  getRuntimePaths: () => Promise<{
+    userData: string;
+    appData: string;
+    documents: string;
+    downloads: string;
+    logs: string;
+    backups: string;
+    data: string;
+  }>;
 }
 
 const desktopAPI: DesktopAPI = {
@@ -42,7 +53,10 @@ const desktopAPI: DesktopAPI = {
   closeWindow: () => ipcRenderer.send('desktop:close-window'),
   isMaximized: () => ipcRenderer.invoke('desktop:is-maximized'),
   getApiBaseUrl: () => ipcRenderer.invoke('desktop:get-api-url'),
-  apiBaseUrl: 'http://127.0.0.1:8080/api'
+  apiBaseUrl: 'http://127.0.0.1:8080/api',
+  openLogsFolder: () => ipcRenderer.invoke('desktop:open-logs-folder'),
+  showSaveBackupDialog: (defaultName?: string) => ipcRenderer.invoke('desktop:save-backup-dialog', defaultName),
+  getRuntimePaths: () => ipcRenderer.invoke('desktop:get-runtime-paths')
 };
 
 contextBridge.exposeInMainWorld('desktopAPI', desktopAPI);

@@ -1,88 +1,70 @@
 import { Request, Response } from 'express';
-import { telegramSyncService } from '../telegram/telegram.sync.js';
-import { telegramClient } from '../telegram/telegram.client.js';
-import { telegramCache } from '../telegram/telegram.cache.js';
+import { firestoreRepository } from '../repositories/firestore.repository.js';
+import { firebaseConfig } from '../config/firebase.js';
 import { localAuthService } from '../services/localAuth.service.js';
 
 export class SyncController {
   /**
-   * Triggers an immediate pull from Telegram storage
+   * Triggers an immediate synchronization from Cloud Firestore
    */
   public async pullSync(req: Request, res: Response): Promise<void> {
     try {
-      const result = await telegramSyncService.syncFromTelegram();
+      await firestoreRepository.syncWithFirestore();
       // Ensure local users are updated
       localAuthService.getAllUsers();
 
       res.json({
-        success: result.success,
-        processed: result.processed,
-        version: result.version,
+        success: true,
+        database: 'firestore',
+        projectId: firebaseConfig.projectId,
         timestamp: new Date().toISOString(),
-        message: result.success
-          ? `Synchronization complete. Processed ${result.processed} updates (snapshot v${result.version}).`
-          : 'Telegram synchronization returned no new updates or is temporarily offline.'
+        message: 'Cloud Firestore synchronization complete.'
       });
     } catch (err: any) {
       console.warn('[SyncController] Pull sync error:', err?.message || err);
       res.status(500).json({
         success: false,
         error: 'SYNC_ERROR',
-        message: err?.message || 'Error during synchronization with Telegram storage.'
+        message: err?.message || 'Error during synchronization with Cloud Firestore.'
       });
     }
   }
 
   /**
-   * Publishes the current local database state as a new snapshot to Telegram
+   * Flushes current local state and syncs with Cloud Firestore
    */
   public async pushSnapshot(req: Request, res: Response): Promise<void> {
     try {
-      const result = await telegramSyncService.publishSnapshot();
+      firestoreRepository.flushToDisk();
+      await firestoreRepository.syncWithFirestore();
       res.json({
-        success: result.success,
-        version: result.version,
-        messageId: result.messageId,
+        success: true,
+        database: 'firestore',
+        projectId: firebaseConfig.projectId,
         timestamp: new Date().toISOString(),
-        message: result.success
-          ? `Database snapshot v${result.version} published to Telegram successfully.`
-          : 'Failed to publish database snapshot to Telegram.'
+        message: 'Database synced with Cloud Firestore successfully.'
       });
     } catch (err: any) {
-      console.warn('[SyncController] Push snapshot error:', err?.message || err);
+      console.warn('[SyncController] Push sync error:', err?.message || err);
       res.status(500).json({
         success: false,
         error: 'SNAPSHOT_ERROR',
-        message: err?.message || 'Error publishing snapshot to Telegram.'
+        message: err?.message || 'Error synchronizing with Cloud Firestore.'
       });
     }
   }
 
   /**
-   * Returns current sync status
+   * Returns current database sync status
    */
   public getStatus(req: Request, res: Response): void {
-    const health = telegramClient.getCachedHealth();
-    const syncState = telegramSyncService.getSyncState();
-    const totalRecords = telegramCache.generateSnapshot().totalRecords;
-
+    const isConnected = firestoreRepository.checkConnection();
     res.json({
       success: true,
-      service: 'kkv-gold-finance-sync',
-      telegram: {
-        configured: health.configured,
-        connected: health.connected,
-        status: health.status,
-        botUsername: health.botUsername,
-        chatTitle: health.chatTitle
-      },
-      sync: {
-        lastSyncedVersion: syncState.lastSyncedVersion,
-        lastSyncedMessageId: syncState.lastSyncedMessageId,
-        isSyncing: syncState.isSyncing,
-        isPublishing: syncState.isPublishing,
-        totalCachedRecords: totalRecords
-      },
+      service: 'kkv-gold-finance-firestore',
+      database: 'Cloud Firestore',
+      projectId: firebaseConfig.projectId,
+      connected: isConnected,
       timestamp: new Date().toISOString()
     });
   }

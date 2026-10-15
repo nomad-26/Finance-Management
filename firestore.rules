@@ -1,0 +1,156 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for role & permission verification
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'ADMIN' ||
+        request.auth.token.admin == true ||
+        request.auth.uid == 'uid_admin_001' ||
+        request.auth.token.email == 'kkvgoldfinance13@gmail.com'
+      );
+    }
+
+    function isStaff() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        request.auth.token.role == 'STAFF' ||
+        request.auth.token.role == 'MANAGER' ||
+        request.auth.token.role == 'EMPLOYEE'
+      );
+    }
+
+    // Default: Deny all unmatched paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ── Users & Staff Directory ───────────────────────────────────────
+    // Master admin: KKV-ADMIN-000001
+    match /users/{userId} {
+      // Authenticated users can read their own profile or staff directory
+      allow read: if isAuthenticated();
+      // Only administrators can create, update roles, or delete users
+      allow write: if isAdmin();
+      // Allow self-update of display name or phone without altering role or permissions
+      allow update: if isAuthenticated() && 
+                    request.auth.uid == userId && 
+                    !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'permissions', 'staffId']);
+    }
+
+    // ── Customers & KYC Records ───────────────────────────────────────
+    match /customers/{customerId} {
+      // Staff & Admins can read active and soft-deleted records
+      allow read: if isStaff();
+      // Create: Must be staff, validate essential fields
+      allow create: if isStaff() &&
+                    request.resource.data.customerId != null &&
+                    request.resource.data.name is string &&
+                    request.resource.data.phone is string;
+      // Update: Staff can update customer details
+      allow update: if isStaff();
+      // Permanent deletion: restricted to administrators
+      allow delete: if isAdmin();
+    }
+
+    // ── Gold Loans & Collateral ───────────────────────────────────────
+    match /loans/{loanId} {
+      allow read: if isStaff();
+      allow create: if isStaff() &&
+                    request.resource.data.loanId != null &&
+                    request.resource.data.customerId != null &&
+                    request.resource.data.principalAmount is number;
+      allow update: if isStaff();
+      allow delete: if isAdmin();
+    }
+
+    // ── Receipts & Financial Collections ─────────────────────────────
+    match /receipts/{receiptId} {
+      allow read: if isStaff();
+      allow create: if isStaff() &&
+                    request.resource.data.receiptId != null &&
+                    request.resource.data.amount is number;
+      // Receipts are immutable financial ledgers; updates require admin privilege
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── Fixed Deposits & Accounts ─────────────────────────────────────
+    match /fixed_deposits/{fdId} {
+      allow read: if isStaff();
+      allow create: if isStaff() &&
+                    request.resource.data.fdNumber != null &&
+                    request.resource.data.depositAmount is number;
+      allow update: if isStaff();
+      allow delete: if isAdmin();
+    }
+
+    match /fd_customers/{customerId} {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
+
+    // ── Rentals (Complexes, Shops, Payments, Expenses, Daybook) ────────
+    match /rental_complexes/{complexId} {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
+
+    match /rental_shops/{shopId} {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
+
+    match /rental_payments/{paymentId} {
+      allow read: if isStaff();
+      allow create: if isStaff() && request.resource.data.amount is number;
+      allow update, delete: if isAdmin();
+    }
+
+    match /rental_expenses/{expenseId} {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
+
+    match /rental_daybook/{entryId} {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
+
+    // ── Daybook & General Ledger ──────────────────────────────────────
+    match /daybook/{entryId} {
+      allow read: if isStaff();
+      allow create: if isStaff() &&
+                    request.resource.data.amount is number &&
+                    request.resource.data.date is string;
+      allow update: if isStaff();
+      allow delete: if isAdmin();
+    }
+
+    // ── Application Settings & Interest Rates ─────────────────────────
+    match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      // Only administrators can change system settings, rates, or business profile
+      allow write: if isAdmin();
+    }
+
+    // ── Reminders & Notifications ─────────────────────────────────────
+    match /reminders/{reminderId} {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
+
+    // ── Audit Logs ────────────────────────────────────────────────────
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      // Append-only audit logs
+      allow create: if isAuthenticated();
+      allow update, delete: if false; // Audit logs must be immutable
+    }
+  }
+}

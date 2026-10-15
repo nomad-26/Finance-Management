@@ -35,8 +35,11 @@ import {
   getPendingFDInterestPeriods,
   addCalendarMonths
 } from '../utils/fdInterestUtils';
-import { FixedDeposit, CustomerKycDocument, CustomerPhotoData, Customer } from '../types';
+import { FixedDeposit, CustomerKycDocument, CustomerPhotoData, Customer, Loan } from '../types';
 import { apiService } from '../services/api';
+import { isAdminRole } from '../config/permissions';
+import { EditLoanModal } from '../components/admin/EditLoanModal';
+import { DeleteLoanModal } from '../components/admin/DeleteLoanModal';
 
 type ActiveTab = 'overview' | 'loans' | 'fixed-deposits' | 'pending' | 'pledged-items' | 'payments' | 'activity';
 
@@ -82,8 +85,13 @@ export const CustomerProfile: React.FC = () => {
     masterControlSettings,
     reloadAllData,
     updateCustomer,
-    hasPermission
+    hasPermission,
+    userRole
   } = useApp();
+
+  const isAdmin = isAdminRole(userRole);
+  const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
+  const [deletingLoan, setDeletingLoan] = useState<Loan | null>(null);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [selectedViewFD, setSelectedViewFD] = useState<FixedDeposit | null>(null);
@@ -198,7 +206,7 @@ export const CustomerProfile: React.FC = () => {
           await reloadAllData();
           fetchFreshCustomerData(customer.id);
         }
-        showToast('Document deleted successfully from Telegram storage and profile', 'success');
+        showToast('Document deleted successfully from Cloud storage and profile', 'success');
       } else {
         showToast(res?.message || 'Failed to delete document', 'error');
       }
@@ -212,7 +220,7 @@ export const CustomerProfile: React.FC = () => {
 
   const handleViewDocument = async (docObj: any) => {
     if (!docObj) return;
-    const docKey = docObj.id || docObj.fileId || docObj.telegramFileId || 'photo';
+    const docKey = docObj.id || docObj.fileId || docObj.storagePath || 'photo';
     try {
       setViewingDocId(docKey);
       const res = await apiService.viewProtectedDocument(docObj);
@@ -1119,7 +1127,7 @@ export const CustomerProfile: React.FC = () => {
                         </h3>
                         <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <ShieldCheck size={12} color="#059669" />
-                          <span>Telegram Secure Vault • Customer: <strong>{canonicalCustId}</strong></span>
+                          <span>Cloud Secure Vault • Customer: <strong>{canonicalCustId}</strong></span>
                         </div>
                       </div>
                     </div>
@@ -1182,7 +1190,7 @@ export const CustomerProfile: React.FC = () => {
                         No documents uploaded yet.
                       </h4>
                       <p style={{ margin: '0 0 16px 0', fontSize: '12.5px', color: 'var(--text-muted)' }}>
-                        Upload Aadhaar, PAN, Passport, Address Proof, or customer photo directly to Telegram storage.
+                        Upload Aadhaar, PAN, Passport, Address Proof, or customer photo directly to Cloud storage.
                       </p>
                       <button
                         type="button"
@@ -1273,7 +1281,7 @@ export const CustomerProfile: React.FC = () => {
                                   {photoData.fileName || 'customer-photo.jpg'}
                                 </div>
                                 <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                                  IMAGE • Telegram Secure Storage
+                                  IMAGE • Cloud Secure Storage
                                 </div>
                               </div>
                             </div>
@@ -1502,7 +1510,7 @@ export const CustomerProfile: React.FC = () => {
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border-subtle)', paddingTop: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px', borderTop: '1px solid var(--border-subtle)', paddingTop: '10px' }}>
                       <button
                         type="button"
                         className="btn btn-primary btn-sm"
@@ -1511,6 +1519,36 @@ export const CustomerProfile: React.FC = () => {
                       >
                         <Eye size={13} style={{ marginRight: '4px' }} /> View Loan
                       </button>
+                      {isAdmin && (
+                        <>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ fontSize: '12px', fontWeight: 700, padding: '6px 12px', gap: '4px' }}
+                            onClick={() => setEditingLoan(l)}
+                            title="Admin Edit Loan"
+                          >
+                            <Edit3 size={13} />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{
+                              fontSize: '12px',
+                              fontWeight: 700,
+                              padding: '6px 12px',
+                              gap: '4px',
+                              color: 'var(--color-danger, #ef4444)'
+                            }}
+                            onClick={() => setDeletingLoan(l)}
+                            title="Admin Delete Loan"
+                          >
+                            <Trash2 size={13} />
+                            <span>Delete</span>
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 );
@@ -1850,6 +1888,24 @@ export const CustomerProfile: React.FC = () => {
         onClose={() => setIsUploadKycOpen(false)}
         onSuccess={handleKycUploaded}
       />
+
+      {/* Admin Edit & Delete Loan Modals */}
+      {isAdmin && (
+        <>
+          <EditLoanModal
+            isOpen={!!editingLoan}
+            loan={editingLoan}
+            onClose={() => setEditingLoan(null)}
+            onSuccess={() => setEditingLoan(null)}
+          />
+          <DeleteLoanModal
+            isOpen={!!deletingLoan}
+            loan={deletingLoan}
+            onClose={() => setDeletingLoan(null)}
+            onSuccess={() => setDeletingLoan(null)}
+          />
+        </>
+      )}
     </div>
   );
 };

@@ -18,7 +18,9 @@ import {
   Key,
   Eye,
   EyeOff,
-  HardDrive
+  HardDrive,
+  FileText,
+  Server
 } from 'lucide-react';
 import { UserProfile, UserRole } from '../types';
 import {
@@ -29,7 +31,7 @@ import {
 } from '../config/permissions';
 import { COMPANY_CONFIG } from '../config/company';
 import { LoanConfigurationSection } from '../components/admin/LoanConfigurationSection';
-import { apiService } from '../services/api';
+import { apiService, fetchWithAuth } from '../services/api';
 
 export const Settings: React.FC = () => {
   const {
@@ -53,7 +55,40 @@ export const Settings: React.FC = () => {
 
   const isMasterAdmin = isAdminRole(userRole);
 
-  const [activeTab, setActiveTab] = useState<'branch' | 'financial' | 'loan-types' | 'security' | 'printer'>('branch');
+  const [activeTab, setActiveTab] = useState<'branch' | 'financial' | 'loan-types' | 'security' | 'printer' | 'system-logs'>('branch');
+
+  // System Diagnostics & Logs State
+  const [systemLogs, setSystemLogs] = useState<string[]>([]);
+  const [logFilePath, setLogFilePath] = useState<string>('');
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [diagnosticsData, setDiagnosticsData] = useState<any>(null);
+
+  const fetchSystemLogs = async () => {
+    setLogsLoading(true);
+    try {
+      const [logsRes, diagRes] = await Promise.all([
+        fetchWithAuth<any>('/admin/logs').catch(() => null),
+        fetchWithAuth<any>('/admin/system/diagnostics').catch(() => null)
+      ]);
+      if (logsRes && logsRes.success && logsRes.data) {
+        setSystemLogs(logsRes.data.lines || []);
+        setLogFilePath(logsRes.data.logPath || '');
+      }
+      if (diagRes && diagRes.success && diagRes.data) {
+        setDiagnosticsData(diagRes.data);
+      }
+    } catch (err) {
+      console.warn('[Settings] Logs fetch notice:', err);
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'system-logs') {
+      fetchSystemLogs();
+    }
+  }, [activeTab]);
 
   const [branchName, setBranchName] = useState(() => branchSettings?.businessTitle || `${COMPANY_CONFIG.businessName} - MAIN BRANCH`);
   const [address, setAddress] = useState(() => branchSettings?.branchAddress || COMPANY_CONFIG.address);
@@ -533,7 +568,141 @@ export const Settings: React.FC = () => {
           <Shield size={14} />
           <span>Security &amp; Staff</span>
         </button>
+        <button
+          className={`btn btn-sm ${activeTab === 'system-logs' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setActiveTab('system-logs')}
+        >
+          <FileText size={14} />
+          <span>System Diagnostics &amp; Logs</span>
+        </button>
       </div>
+
+      {/* ── SYSTEM DIAGNOSTICS & LOGS TAB ── */}
+      {activeTab === 'system-logs' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Diagnostics Card */}
+          <div className="card">
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 className="card-title">
+                  <Server size={18} color="var(--color-primary-accent)" />
+                  <span>Hardware &amp; System Diagnostics</span>
+                </h2>
+                <p className="card-description">Desktop runtime host specifications and directory telemetry</p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                onClick={fetchSystemLogs}
+                disabled={logsLoading}
+              >
+                <RefreshCw size={13} className={logsLoading ? 'animate-spin' : ''} />
+                <span>Refresh</span>
+              </button>
+            </div>
+
+            {diagnosticsData && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                <div style={{ backgroundColor: 'var(--bg-surface-secondary)', border: '1px solid var(--border-subtle)', borderRadius: '10px', padding: '12px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Operating System</div>
+                  <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px' }}>
+                    Windows {diagnosticsData.osRelease} ({diagnosticsData.arch})
+                  </div>
+                </div>
+
+                <div style={{ backgroundColor: 'var(--bg-surface-secondary)', border: '1px solid var(--border-subtle)', borderRadius: '10px', padding: '12px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>RAM (Memory)</div>
+                  <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px' }}>
+                    {diagnosticsData.totalMemoryFormatted} ({diagnosticsData.freeMemoryFormatted} Free)
+                  </div>
+                </div>
+
+                <div style={{ backgroundColor: 'var(--bg-surface-secondary)', border: '1px solid var(--border-subtle)', borderRadius: '10px', padding: '12px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Processor Cores</div>
+                  <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px' }}>
+                    {diagnosticsData.cpuCount} Logical Cores
+                  </div>
+                </div>
+
+                <div style={{ backgroundColor: 'var(--bg-surface-secondary)', border: '1px solid var(--border-subtle)', borderRadius: '10px', padding: '12px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Data Storage Path</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {diagnosticsData.userDataPath}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* System Logs Tail Card */}
+          <div className="card">
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <div>
+                <h2 className="card-title">
+                  <FileText size={18} color="var(--color-primary-accent)" />
+                  <span>Production System Logs</span>
+                </h2>
+                <p className="card-description">Live log records from <code>{logFilePath || 'backend.log'}</code></p>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  onClick={async () => {
+                    if (typeof window !== 'undefined' && (window as any).desktopAPI?.openLogsFolder) {
+                      await (window as any).desktopAPI.openLogsFolder();
+                    } else {
+                      showToast('Opening logs folder is supported in the Desktop application.', 'info');
+                    }
+                  }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <HardDrive size={14} />
+                  <span>Open Logs Folder</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  onClick={fetchSystemLogs}
+                  disabled={logsLoading}
+                >
+                  <RefreshCw size={13} className={logsLoading ? 'animate-spin' : ''} />
+                  <span>Reload Logs</span>
+                </button>
+              </div>
+            </div>
+
+            <div
+              style={{
+                backgroundColor: '#0F172A',
+                color: '#E2E8F0',
+                padding: '16px',
+                borderRadius: '10px',
+                fontFamily: 'Consolas, Monaco, monospace',
+                fontSize: '12px',
+                lineHeight: 1.6,
+                maxHeight: '400px',
+                overflowY: 'auto',
+                border: '1px solid #334155'
+              }}
+            >
+              {systemLogs.length === 0 ? (
+                <div style={{ color: '#94A3B8', textAlign: 'center', padding: '20px' }}>
+                  No log entries found. Backend is running cleanly.
+                </div>
+              ) : (
+                systemLogs.map((line, idx) => (
+                  <div key={idx} style={{ wordBreak: 'break-all', marginBottom: '2px' }}>
+                    {line}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── LOAN TYPES TAB ── */}
       {activeTab === 'loan-types' && (
@@ -2362,7 +2531,7 @@ export const Settings: React.FC = () => {
             </p>
 
             <div style={{ padding: '10px 14px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '12px', color: '#b91c1c', marginBottom: '18px' }}>
-              ⚠️ <strong>Warning:</strong> This will remove their credentials from the Telegram database and revoke all active sessions. This action cannot be undone.
+              ⚠️ <strong>Warning:</strong> This will remove their credentials from the Cloud Firestore database and revoke all active sessions. This action cannot be undone.
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>

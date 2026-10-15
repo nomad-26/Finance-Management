@@ -6,11 +6,11 @@ import {
   RentalAuditLog,
   SyncQueueItem
 } from '../types/rental.types.js';
-import { telegramRepository } from '../../../telegram/telegram.repository.js';
+import { firestoreRepository } from '../../../repositories/firestore.repository.js';
 
 export class RentalRepository {
   public clearCache(): void {
-    // telegramCache handles caching
+    // firestoreRepository handles caching
   }
 
   public writeJson(_fileName: string, _data: any): void {
@@ -78,7 +78,7 @@ export class RentalRepository {
 
   // ── Complexes CRUD ───────────────────────────────────────────────────────
   public getComplexes(): RentalComplex[] {
-    return telegramRepository.getRecords<RentalComplex>('RENTAL_COMPLEX');
+    return firestoreRepository.getRecords<RentalComplex>('RENTAL_COMPLEX');
   }
 
   public getComplexById(idOrComplexId: string): RentalComplex | null {
@@ -92,9 +92,9 @@ export class RentalRepository {
     const updated = { ...complex, id, complexId: id, updatedAt: new Date().toISOString() };
 
     if (existing) {
-      telegramRepository.updateRecord('RENTAL_COMPLEX', id, updated).catch(() => {});
+      firestoreRepository.updateRecord('RENTAL_COMPLEX', id, updated).catch(() => {});
     } else {
-      telegramRepository.createRecord('RENTAL_COMPLEX', id, updated).catch(() => {});
+      firestoreRepository.createRecord('RENTAL_COMPLEX', id, updated).catch(() => {});
     }
 
     return updated;
@@ -103,7 +103,7 @@ export class RentalRepository {
   public deleteComplex(complexId: string): boolean {
     const existing = this.getComplexById(complexId);
     if (existing) {
-      telegramRepository.deleteRecord('RENTAL_COMPLEX', existing.complexId || existing.id, false).catch(() => {});
+      firestoreRepository.deleteRecord('RENTAL_COMPLEX', existing.complexId || existing.id, false).catch(() => {});
       return true;
     }
     return false;
@@ -111,7 +111,7 @@ export class RentalRepository {
 
   // ── Shops CRUD ───────────────────────────────────────────────────────────
   public getShops(): RentalShop[] {
-    return telegramRepository.getRecords<RentalShop>('RENTAL_SHOP');
+    return firestoreRepository.getRecords<RentalShop>('RENTAL_SHOP');
   }
 
   public getShopById(idOrShopId: string): RentalShop | null {
@@ -129,9 +129,9 @@ export class RentalRepository {
     const updated = { ...shop, id, shopId: id, updatedAt: new Date().toISOString() };
 
     if (existing) {
-      telegramRepository.updateRecord('RENTAL_SHOP', id, updated).catch(() => {});
+      firestoreRepository.updateRecord('RENTAL_SHOP', id, updated).catch(() => {});
     } else {
-      telegramRepository.createRecord('RENTAL_SHOP', id, updated).catch(() => {});
+      firestoreRepository.createRecord('RENTAL_SHOP', id, updated).catch(() => {});
     }
 
     return updated;
@@ -140,7 +140,7 @@ export class RentalRepository {
   public deleteShop(shopId: string): boolean {
     const existing = this.getShopById(shopId);
     if (existing) {
-      telegramRepository.deleteRecord('RENTAL_SHOP', existing.shopId || existing.id, false).catch(() => {});
+      firestoreRepository.deleteRecord('RENTAL_SHOP', existing.shopId || existing.id, false).catch(() => {});
       return true;
     }
     return false;
@@ -148,7 +148,7 @@ export class RentalRepository {
 
   // ── Rent Payments CRUD ───────────────────────────────────────────────────
   public getPayments(): RentalPayment[] {
-    return telegramRepository.getRecords<RentalPayment>('RENTAL_PAYMENT');
+    return firestoreRepository.getRecords<RentalPayment>('RENTAL_PAYMENT');
   }
 
   public getPaymentById(idOrPaymentId: string): RentalPayment | null {
@@ -170,9 +170,9 @@ export class RentalRepository {
     const updated = { ...payment, id, paymentId: id, updatedAt: new Date().toISOString() };
 
     if (existing) {
-      telegramRepository.updateRecord('RENTAL_PAYMENT', id, updated).catch(() => {});
+      firestoreRepository.updateRecord('RENTAL_PAYMENT', id, updated).catch(() => {});
     } else {
-      telegramRepository.createRecord('RENTAL_PAYMENT', id, updated).catch(() => {});
+      firestoreRepository.createRecord('RENTAL_PAYMENT', id, updated).catch(() => {});
     }
 
     return updated;
@@ -180,7 +180,7 @@ export class RentalRepository {
 
   // ── Expenses CRUD ────────────────────────────────────────────────────────
   public getExpenses(): RentalExpense[] {
-    return telegramRepository.getRecords<RentalExpense>('RENTAL_EXPENSE');
+    return firestoreRepository.getRecords<RentalExpense>('RENTAL_EXPENSE');
   }
 
   public getExpenseById(idOrExpenseId: string): RentalExpense | null {
@@ -194,9 +194,9 @@ export class RentalRepository {
     const updated = { ...expense, id, expenseId: id, updatedAt: new Date().toISOString() };
 
     if (existing) {
-      telegramRepository.updateRecord('RENTAL_EXPENSE', id, updated).catch(() => {});
+      firestoreRepository.updateRecord('RENTAL_EXPENSE', id, updated).catch(() => {});
     } else {
-      telegramRepository.createRecord('RENTAL_EXPENSE', id, updated).catch(() => {});
+      firestoreRepository.createRecord('RENTAL_EXPENSE', id, updated).catch(() => {});
     }
 
     return updated;
@@ -205,7 +205,7 @@ export class RentalRepository {
   public deleteExpense(expenseId: string): boolean {
     const existing = this.getExpenseById(expenseId);
     if (existing) {
-      telegramRepository.deleteRecord('RENTAL_EXPENSE', existing.expenseId || existing.id, false).catch(() => {});
+      firestoreRepository.deleteRecord('RENTAL_EXPENSE', existing.expenseId || existing.id, false).catch(() => {});
       return true;
     }
     return false;
@@ -213,14 +213,14 @@ export class RentalRepository {
 
   // ── Audit Logs ───────────────────────────────────────────────────────────
   public getAuditLogs(): RentalAuditLog[] {
-    const logs = telegramRepository.getRecords<RentalAuditLog>('RENTAL_AUDIT');
+    const logs = firestoreRepository.getRecords<RentalAuditLog>('RENTAL_AUDIT');
     return logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }
 
   public saveAuditLog(log: RentalAuditLog): RentalAuditLog {
     const id = log.id || `AUD-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
     const record = { ...log, id };
-    telegramRepository.createRecord('RENTAL_AUDIT', id, record).catch(() => {});
+    firestoreRepository.createRecord('RENTAL_AUDIT', id, record).catch(() => {});
     return record;
   }
 
