@@ -100,9 +100,13 @@ export const createCustomer = async (req: Request, res: Response) => {
         error: 'DUPLICATE_PHONE_NUMBER'
       });
     }
-    return res.status(500).json({
+    const status = err.statusCode || 500;
+    return res.status(status).json({
       success: false,
-      message: err.message || 'Internal server error'
+      message: err.message || 'Internal server error',
+      error: err.code || 'CUSTOMER_CREATION_FAILED',
+      category: err.category || undefined,
+      details: err.details || undefined
     });
   }
 };

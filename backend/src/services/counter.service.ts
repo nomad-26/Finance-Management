@@ -1,4 +1,5 @@
 import { firestoreRepository } from '../repositories/firestore.repository.js';
+import { unifiedFirestore } from '../config/firebase.js';
 import { Loan } from '../types/index.js';
 
 interface CounterData {
@@ -13,6 +14,9 @@ interface CounterData {
 const COUNTER_RECORD_ID = 'APP_COUNTERS';
 
 export class CounterService {
+  // In-process concurrency mutex chain to prevent race conditions during local operations
+  private localMutex: Promise<any> = Promise.resolve();
+
   private getCounters(): CounterData {
     const envelope = firestoreRepository.getRecordById<CounterData>('COUNTER', COUNTER_RECORD_ID, true);
     if (envelope && envelope.data) {
@@ -153,52 +157,130 @@ export class CounterService {
   }
 
   /**
-   * Sequence Generator with automatic high-water-mark detection across existing records
+   * Sequence Generator with automatic high-water-mark detection across existing records.
+   * Uses an atomic Cloud Firestore transaction to ensure zero duplicate IDs under concurrent requests.
    */
   public async getNextSequence(name: string): Promise<number> {
-    const counters = this.getCounters();
-    let current = counters[name] || 0;
+    try {
+      const nextVal = await unifiedFirestore.runTransaction<number>(async (tx) => {
+        const snap = await tx.get('counters', COUNTER_RECORD_ID);
+        const data = snap.exists ? (snap.data() || {}) : {};
 
-    if (name === 'customerId' || name === 'customer') {
-      const highest = this.getHighestExistingCustomerNumber();
-      current = Math.max(current, highest);
-    } else if (name === 'receiptNo' || name === 'receipt') {
-      const highest = this.getHighestExistingReceiptNumber();
-      current = Math.max(current, highest);
-    } else if (name === 'fdReceiptNo' || name === 'fdReceipt') {
-      const highest = this.getHighestExistingFdReceiptNumber();
-      current = Math.max(current, highest);
-    } else if (name === 'fdInterestVoucherNo' || name === 'fdInterestVoucher' || name === 'intRcpt') {
-      const highest = this.getHighestExistingFdInterestVoucherNumber();
-      current = Math.max(current, highest);
+        let current = typeof data[name] === 'number' ? data[name] : 0;
+
+        // Verify high-water mark across database records so sequences never regress
+        if (name === 'customerId' || name === 'customer') {
+          const highest = this.getHighestExistingCustomerNumber();
+          if (highest > current) current = highest;
+        } else if (name === 'loanSequence' || name === 'loanNo' || name === 'loan') {
+          const highest = this.getHighestExistingLoanNumber();
+          if (highest > current) current = highest;
+        } else if (name === 'receiptNo' || name === 'receipt') {
+          const highest = this.getHighestExistingReceiptNumber();
+          if (highest > current) current = highest;
+        } else if (name === 'fdReceiptNo' || name === 'fdReceipt') {
+          const highest = this.getHighestExistingFdReceiptNumber();
+          if (highest > current) current = highest;
+        } else if (name === 'fdInterestVoucherNo' || name === 'fdInterestVoucher' || name === 'intRcpt') {
+          const highest = this.getHighestExistingFdInterestVoucherNumber();
+          if (highest > current) current = highest;
+        }
+
+        const next = current + 1;
+        const updated: Record<string, any> = {
+          ...data,
+          [name]: next,
+          updatedAt: new Date().toISOString()
+        };
+
+        // Mirror aliases
+        if (name === 'customerId') updated.customer = next;
+        if (name === 'customer') updated.customerId = next;
+        if (name === 'loanSequence' || name === 'loan' || name === 'loanNo') {
+          updated.loanSequence = next;
+          updated.loanNo = next;
+        }
+        if (name === 'receiptNo') updated.receipt = next;
+        if (name === 'receipt') updated.receiptNo = next;
+        if (name === 'fdReceiptNo') updated.fdReceipt = next;
+        if (name === 'fdInterestVoucherNo') updated.fdInterestVoucher = next;
+
+        tx.set('counters', COUNTER_RECORD_ID, updated, { merge: true });
+        return next;
+      });
+
+      // Synchronize in-memory and disk cache
+      const counters = this.getCounters();
+      counters[name] = nextVal;
+      if (name === 'customerId') counters.customer = nextVal;
+      if (name === 'receiptNo') counters.receipt = nextVal;
+      if (name === 'loanSequence' || name === 'loanNo') {
+        counters.loanSequence = nextVal;
+        counters.loanNo = nextVal;
+      }
+      this.updateMemoryCache(counters);
+
+      return nextVal;
+    } catch (txErr: any) {
+      console.warn('[CounterService] Remote atomic transaction notice (using serialized local mutex):', txErr?.message || txErr);
+      return this.getNextSequenceLocal(name);
     }
+  }
 
-    const nextVal = current + 1;
-    counters[name] = nextVal;
-    if (name === 'receiptNo') counters.receipt = nextVal;
-    if (name === 'customerId') counters.customer = nextVal;
-    if (name === 'fdReceiptNo') counters.fdReceipt = nextVal;
-    if (name === 'fdInterestVoucherNo') counters.fdInterestVoucher = nextVal;
+  /**
+   * Concurrency-safe in-process mutex fallback for sequence generation
+   */
+  private async getNextSequenceLocal(name: string): Promise<number> {
+    const nextSequencePromise = this.localMutex.then(async () => {
+      const counters = this.getCounters();
+      let current = counters[name] || 0;
 
-    await this.saveCounters(counters);
-    return nextVal;
+      if (name === 'customerId' || name === 'customer') {
+        const highest = this.getHighestExistingCustomerNumber();
+        current = Math.max(current, highest);
+      } else if (name === 'receiptNo' || name === 'receipt') {
+        const highest = this.getHighestExistingReceiptNumber();
+        current = Math.max(current, highest);
+      } else if (name === 'fdReceiptNo' || name === 'fdReceipt') {
+        const highest = this.getHighestExistingFdReceiptNumber();
+        current = Math.max(current, highest);
+      } else if (name === 'fdInterestVoucherNo' || name === 'fdInterestVoucher' || name === 'intRcpt') {
+        const highest = this.getHighestExistingFdInterestVoucherNumber();
+        current = Math.max(current, highest);
+      }
+
+      const nextVal = current + 1;
+      counters[name] = nextVal;
+      if (name === 'receiptNo') counters.receipt = nextVal;
+      if (name === 'customerId') counters.customer = nextVal;
+      if (name === 'fdReceiptNo') counters.fdReceipt = nextVal;
+      if (name === 'fdInterestVoucherNo') counters.fdInterestVoucher = nextVal;
+      if (name === 'loanSequence' || name === 'loanNo') {
+        counters.loanSequence = nextVal;
+        counters.loanNo = nextVal;
+      }
+
+      await this.saveCounters(counters);
+      return nextVal;
+    });
+
+    this.localMutex = nextSequencePromise.catch(() => {});
+    return nextSequencePromise;
+  }
+
+  private updateMemoryCache(counters: CounterData): void {
+    const existing = firestoreRepository.getRecordById<CounterData>('COUNTER', COUNTER_RECORD_ID, true);
+    if (existing) {
+      existing.data = counters;
+      existing.updatedAt = new Date().toISOString();
+    }
   }
 
   /**
    * Authoritative Unified Next Loan Sequence Generator
    */
   public async getNextLoanSequence(): Promise<number> {
-    const maxExisting = this.getHighestExistingLoanNumber();
-    const counters = this.getCounters();
-    const currentCounter = counters.loanSequence || counters.loanNo || 0;
-    const baseSeq = Math.max(maxExisting, currentCounter);
-
-    const nextVal = baseSeq + 1;
-    counters.loanSequence = nextVal;
-    counters.loanNo = nextVal;
-
-    await this.saveCounters(counters);
-    return nextVal;
+    return this.getNextSequence('loanSequence');
   }
 
   public async peekNextLoanSequence(): Promise<number> {

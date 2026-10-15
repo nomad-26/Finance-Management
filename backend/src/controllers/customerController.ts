@@ -424,11 +424,14 @@ export const createCustomer = async (req: Request, res: Response) => {
       data: savedCustomer
     });
   } catch (error: any) {
-    console.error('[CustomerController] createCustomer unexpected error:', error);
-    return res.status(500).json({
+    console.error('[CustomerController] createCustomer error:', error);
+    const status = error?.statusCode || 500;
+    return res.status(status).json({
       success: false,
       message: error?.message || 'An unexpected error occurred while creating customer.',
-      error: 'CUSTOMER_CREATION_FAILED'
+      error: error?.code || 'CUSTOMER_CREATION_FAILED',
+      category: error?.category || undefined,
+      details: error?.details || undefined
     });
   }
 };

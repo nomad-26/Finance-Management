@@ -17,7 +17,7 @@ import {
   deleteDoc,
   writeBatch
 } from 'firebase/firestore';
-import { db, unifiedFirestore, isUsingAdminSdk } from '../config/firebase.js';
+import { db, unifiedFirestore, isUsingAdminSdk, getFirebaseDiagnostics } from '../config/firebase.js';
 import {
   EntityType,
   AppRecordEnvelope,
@@ -25,6 +25,110 @@ import {
   APP_RECORD_MARKER
 } from './entity.types.js';
 import { getStorageSubdirectory, ensureDirectoryExists, getStorageBaseDir, isServerless } from '../config/storage.js';
+
+export interface CategorizedFirestoreError extends Error {
+  code: string;
+  statusCode: number;
+  category: 'CONFIG_MISSING' | 'CONFIG_PARSE_ERROR' | 'PROJECT_MISMATCH' | 'IAM_PERMISSION_DENIED' | 'SECURITY_RULES_DENIED' | 'TRANSACTION_ABORTED' | 'NOT_FOUND' | 'UNAVAILABLE' | 'UNKNOWN';
+  details?: any;
+}
+
+/**
+ * Classifies Firestore errors with high precision to distinguish between
+ * missing environment variables, JSON parse errors, project mismatches,
+ * Google Cloud IAM role deficiencies, security rule denials, and transaction aborts.
+ */
+export function categorizeFirestoreError(err: any, collectionName: string, id: string): CategorizedFirestoreError {
+  const diag = getFirebaseDiagnostics();
+  const rawMsg = err?.message || String(err);
+  const errCode = err?.code;
+  const isPermDenied = errCode === 'permission-denied' || errCode === 7 || rawMsg.includes('PERMISSION_DENIED') || rawMsg.includes('permission-denied');
+  const isAborted = errCode === 'aborted' || errCode === 10 || rawMsg.includes('ABORTED') || rawMsg.includes('contention');
+  const isTimeout = errCode === 'deadline-exceeded' || errCode === 4 || rawMsg.includes('DEADLINE_EXCEEDED');
+  const isUnavailable = errCode === 'unavailable' || errCode === 14 || rawMsg.includes('UNAVAILABLE');
+  const isNotFound = errCode === 'not-found' || errCode === 5 || rawMsg.includes('NOT_FOUND');
+
+  let category: CategorizedFirestoreError['category'] = 'UNKNOWN';
+  let message = `Firestore persistence error for ${collectionName}/${id}: ${rawMsg}`;
+  let statusCode = 500;
+  let code = 'FIRESTORE_WRITE_FAILED';
+
+  if (isPermDenied) {
+    if (!diag.configured) {
+      category = 'CONFIG_MISSING';
+      statusCode = 403;
+      code = 'FIRESTORE_CREDENTIALS_MISSING';
+      message = `Firestore write permission denied for ${collectionName}/${id}: FIREBASE_SERVICE_ACCOUNT is not configured in Vercel environment variables.`;
+    } else if (!diag.jsonParsed) {
+      category = 'CONFIG_PARSE_ERROR';
+      statusCode = 500;
+      code = 'FIRESTORE_CONFIG_PARSE_ERROR';
+      message = `Firestore write permission denied for ${collectionName}/${id}: FIREBASE_SERVICE_ACCOUNT is configured but could not be parsed as valid JSON (${diag.parseError || 'syntax error'}). Check for unescaped newlines or quotes in Vercel.`;
+    } else if (!diag.projectIdMatches) {
+      category = 'PROJECT_MISMATCH';
+      statusCode = 500;
+      code = 'FIRESTORE_PROJECT_MISMATCH';
+      message = `Firestore write permission denied for ${collectionName}/${id}: Configured service account belongs to project "${diag.resolvedProjectId}", which does not match target project "${diag.expectedProjectId}".`;
+    } else if (!diag.privateKeyHeaderValid) {
+      category = 'CONFIG_PARSE_ERROR';
+      statusCode = 500;
+      code = 'FIRESTORE_INVALID_PRIVATE_KEY';
+      message = `Firestore write permission denied for ${collectionName}/${id}: Service account private key is invalid or missing "BEGIN PRIVATE KEY" PEM header.`;
+    } else if (diag.activeSdk === 'ADMIN_SDK') {
+      category = 'IAM_PERMISSION_DENIED';
+      statusCode = 403;
+      code = 'FIRESTORE_IAM_PERMISSION_DENIED';
+      message = `Firestore write permission denied for ${collectionName}/${id}: Service account (${diag.serviceAccountEmail}) lacks IAM permissions (roles/datastore.user) on Google Cloud project ${diag.expectedProjectId}.`;
+    } else {
+      category = 'SECURITY_RULES_DENIED';
+      statusCode = 403;
+      code = 'FIRESTORE_SECURITY_RULES_DENIED';
+      message = `Firestore write permission denied for ${collectionName}/${id}: Write was rejected by Firestore Security Rules. Ensure Admin SDK credentials are provided in Vercel so server-side operations bypass client rules.`;
+    }
+  } else if (isAborted) {
+    category = 'TRANSACTION_ABORTED';
+    statusCode = 409;
+    code = 'FIRESTORE_TRANSACTION_ABORTED';
+    message = `Firestore transaction aborted for ${collectionName}/${id} due to concurrent update contention. Please retry.`;
+  } else if (isTimeout) {
+    category = 'UNAVAILABLE';
+    statusCode = 504;
+    code = 'FIRESTORE_DEADLINE_EXCEEDED';
+    message = `Firestore operation timed out for ${collectionName}/${id}.`;
+  } else if (isUnavailable) {
+    category = 'UNAVAILABLE';
+    statusCode = 503;
+    code = 'FIRESTORE_SERVICE_UNAVAILABLE';
+    message = `Firestore service temporarily unavailable for ${collectionName}/${id}.`;
+  } else if (isNotFound) {
+    category = 'NOT_FOUND';
+    statusCode = 404;
+    code = 'FIRESTORE_TARGET_NOT_FOUND';
+    message = `Firestore document or database target not found for ${collectionName}/${id}.`;
+  }
+
+  const error = new Error(message) as CategorizedFirestoreError;
+  error.code = code;
+  error.statusCode = statusCode;
+  error.category = category;
+  error.details = {
+    originalError: rawMsg,
+    originalCode: errCode,
+    collectionName,
+    documentId: id,
+    diagnostics: {
+      activeSdk: diag.activeSdk,
+      configured: diag.configured,
+      jsonParsed: diag.jsonParsed,
+      projectIdMatches: diag.projectIdMatches,
+      resolvedProjectId: diag.resolvedProjectId,
+      expectedProjectId: diag.expectedProjectId,
+      serviceAccountEmail: diag.serviceAccountEmail
+    }
+  };
+
+  return error;
+}
 
 // Map internal EntityType to Firestore Collection names
 export const ENTITY_COLLECTION_MAP: Record<EntityType, string> = {
@@ -294,23 +398,12 @@ export class FirestoreRepository {
 
         await unifiedFirestore.setDoc(collectionName, id, payload, { merge: true });
       } catch (err: any) {
-        const isPermDenied = err?.code === 'permission-denied' || err?.message?.includes('PERMISSION_DENIED');
-        if (isPermDenied) {
-          console.warn(`[FirestoreRepository] Firestore PERMISSION_DENIED for ${type}:${id}. To enable write access in production, configure FIREBASE_SERVICE_ACCOUNT in environment variables.`);
-        } else {
-          console.warn(`[FirestoreRepository] Firestore persist notice for ${type}:${id}:`, err?.message || err);
-        }
+        const catErr = categorizeFirestoreError(err, collectionName, id);
+        console.warn(`[FirestoreRepository] Firestore persist error for ${type}:${id} [${catErr.category} / ${catErr.code}]:`, catErr.message);
 
         // On serverless runtimes (Vercel) or when strict mode is requested, fail loudly instead of returning false success
         if (isServerless || process.env.STRICT_FIRESTORE === 'true') {
-          const persistenceErr: any = new Error(
-            isPermDenied
-              ? `Firestore write permission denied for ${collectionName}/${id}. Please configure FIREBASE_SERVICE_ACCOUNT in Vercel environment variables.`
-              : `Firestore persistence error for ${collectionName}/${id}: ${err?.message || err}`
-          );
-          persistenceErr.code = isPermDenied ? 'FIRESTORE_PERMISSION_DENIED' : 'FIRESTORE_WRITE_FAILED';
-          persistenceErr.statusCode = isPermDenied ? 403 : 500;
-          throw persistenceErr;
+          throw catErr;
         }
       }
     }
@@ -531,10 +624,10 @@ export class FirestoreRepository {
           deletedBy
         }, { merge: true });
       } catch (err: any) {
-        if (err?.code === 'permission-denied' || err?.message?.includes('PERMISSION_DENIED')) {
-          console.warn(`[FirestoreRepository] Firestore PERMISSION_DENIED on update for ${type}:${id}. Serving update from local/memory cache.`);
-        } else {
-          console.warn(`[FirestoreRepository] Firestore update notice for ${type}:${id}:`, err?.message || err);
+        const catErr = categorizeFirestoreError(err, collectionName, id);
+        console.warn(`[FirestoreRepository] Firestore update notice for ${type}:${id} [${catErr.category} / ${catErr.code}]:`, catErr.message);
+        if (isServerless || process.env.STRICT_FIRESTORE === 'true') {
+          throw catErr;
         }
       }
     }

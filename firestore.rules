@@ -152,5 +152,10 @@ service cloud.firestore {
       allow create: if isAuthenticated();
       allow update, delete: if false; // Audit logs must be immutable
     }
+
+    // ── Application Counters & Sequence Generators ──────────────────
+    match /counters/{counterId} {
+      allow read, write: if isStaff();
+    }
   }
 }
