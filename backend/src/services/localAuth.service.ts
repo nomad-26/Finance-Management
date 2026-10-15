@@ -44,11 +44,32 @@ export class LocalAuthService {
 
   private populateCache(users: IUser[]): void {
     this.usersCache.clear();
+    const adminEmail = (env.ADMIN_EMAIL || MASTER_ADMIN_EMAIL).trim().toLowerCase();
     for (const u of users) {
       if (u.staffId) this.usersCache.set(u.staffId.toLowerCase(), u);
       if (u.uid) this.usersCache.set(u.uid.toLowerCase(), u);
       if (u.email) this.usersCache.set(u.email.toLowerCase().trim(), u);
-      if ((u as any)._id) this.usersCache.set(String((u as any)._id), u);
+      if ((u as any)._id) this.usersCache.set(String((u as any)._id).toLowerCase(), u);
+      if ((u as any).id) this.usersCache.set(String((u as any).id).toLowerCase(), u);
+
+      // Explicitly index canonical Master Admin under all aliases
+      const isMasterAdmin =
+        u.role === 'ADMIN' ||
+        (u.staffId && u.staffId.toUpperCase() === 'KKV-ADMIN-000001') ||
+        (u.email && u.email.toLowerCase() === adminEmail) ||
+        u.uid === 'uid_admin_001' ||
+        (u as any)._id === 'user_admin_001';
+
+      if (isMasterAdmin) {
+        this.usersCache.set('user_admin_001', u);
+        this.usersCache.set('uid_admin_001', u);
+        this.usersCache.set('kkv-admin-000001', u);
+        this.usersCache.set('admin', u);
+        this.usersCache.set('kkvgoldfinance13', u);
+        this.usersCache.set('kkvgoldfinance', u);
+        this.usersCache.set(adminEmail, u);
+        this.usersCache.set('admin@kkvgoldfinance.com', u);
+      }
     }
   }
 
@@ -70,6 +91,80 @@ export class LocalAuthService {
   }
 
   /**
+   * Synchronously guarantees Master Admin exists in memory and cache.
+   * Runs instantly on cold starts.
+   */
+  public ensureDefaultUsers(): IUser[] {
+    const adminEmail = (env.ADMIN_EMAIL || MASTER_ADMIN_EMAIL).trim().toLowerCase();
+    const adminName = (env.ADMIN_NAME || 'Kkvgoldfinance').trim();
+    // Known bcrypt hash for default admin password (Admin@123456)
+    const fallbackHash = '$2b$10$wS2Wb5jA8PfZ5i1vjPjDquqfG.7l5e5iI/1K4s2q1oY.mF8Zq9g7a';
+
+    let localUsers: IUser[] = [];
+    try {
+      if (fs.existsSync(this.usersFilePath)) {
+        const raw = fs.readFileSync(this.usersFilePath, 'utf-8');
+        localUsers = JSON.parse(raw) as IUser[];
+      }
+    } catch {
+      localUsers = Array.from(new Set(this.usersCache.values()));
+    }
+
+    let admin = localUsers.find(
+      (u) =>
+        (u.staffId && u.staffId.toUpperCase() === 'KKV-ADMIN-000001') ||
+        (u.email && u.email.toLowerCase() === adminEmail) ||
+        (u.uid && u.uid.toLowerCase() === 'uid_admin_001') ||
+        (u._id && String(u._id).toLowerCase() === 'user_admin_001')
+    );
+
+    if (!admin) {
+      admin = {
+        _id: 'user_admin_001',
+        id: 'KKV-ADMIN-000001',
+        staffId: 'KKV-ADMIN-000001',
+        uid: 'uid_admin_001',
+        fullName: adminName,
+        displayName: adminName,
+        email: adminEmail,
+        phoneNumber: '9876543210',
+        phone: '9876543210',
+        role: 'ADMIN',
+        passwordHash: fallbackHash,
+        status: 'active',
+        isActive: true,
+        mustChangePassword: false,
+        permissions: ADMIN_DEFAULT_PERMISSIONS,
+        department: 'Administration',
+        createdByUid: 'INITIAL_SEED',
+        createdByEmail: 'system@kkvgoldfinance.com',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: new Date().toISOString()
+      };
+      localUsers.push(admin);
+      this.persistUsers(localUsers);
+    } else {
+      let fieldsUpdated = false;
+      if (admin._id !== 'user_admin_001') { admin._id = 'user_admin_001'; fieldsUpdated = true; }
+      if (admin.staffId !== 'KKV-ADMIN-000001') { admin.staffId = 'KKV-ADMIN-000001'; fieldsUpdated = true; }
+      if (admin.uid !== 'uid_admin_001') { admin.uid = 'uid_admin_001'; fieldsUpdated = true; }
+      if ((admin as any).id !== 'KKV-ADMIN-000001') { (admin as any).id = 'KKV-ADMIN-000001'; fieldsUpdated = true; }
+      if (admin.email !== adminEmail) { admin.email = adminEmail; fieldsUpdated = true; }
+      if (admin.role !== 'ADMIN') { admin.role = 'ADMIN'; fieldsUpdated = true; }
+      if (admin.status !== 'active') { admin.status = 'active'; admin.isActive = true; fieldsUpdated = true; }
+      if (!admin.passwordHash || !admin.passwordHash.startsWith('$2')) {
+        admin.passwordHash = fallbackHash;
+        fieldsUpdated = true;
+      }
+      if (fieldsUpdated) {
+        this.persistUsers(localUsers);
+      }
+    }
+
+    return localUsers;
+  }
+
+  /**
    * Retrieves all users, merging local disk cache with shared Cloud Firestore storage records
    */
   public getAllUsers(): IUser[] {
@@ -82,6 +177,13 @@ export class LocalAuthService {
     } catch (err) {
       console.warn('[LocalAuthService] Local read error:', err);
       localUsers = Array.from(new Set(this.usersCache.values()));
+    }
+
+    if (localUsers.length === 0) {
+      localUsers = Array.from(new Set(this.usersCache.values()));
+    }
+    if (localUsers.length === 0) {
+      return this.ensureDefaultUsers();
     }
 
     // Merge with Cloud Firestore repository (authoritative shared database)
@@ -149,6 +251,24 @@ export class LocalAuthService {
           }
         }
 
+        // Guarantee canonical Master Admin identity in userList
+        const adminEmail = (env.ADMIN_EMAIL || MASTER_ADMIN_EMAIL).trim().toLowerCase();
+        const adminIdx = userList.findIndex(
+          (u) =>
+            u.role === 'ADMIN' ||
+            (u.staffId && u.staffId.toUpperCase() === 'KKV-ADMIN-000001') ||
+            (u.email && u.email.toLowerCase() === adminEmail)
+        );
+        if (adminIdx >= 0) {
+          userList[adminIdx]._id = 'user_admin_001';
+          userList[adminIdx].staffId = 'KKV-ADMIN-000001';
+          userList[adminIdx].uid = 'uid_admin_001';
+          (userList[adminIdx] as any).id = 'KKV-ADMIN-000001';
+          userList[adminIdx].role = 'ADMIN';
+          userList[adminIdx].status = 'active';
+          userList[adminIdx].isActive = true;
+        }
+
         this.persistUsers(userList);
         return userList;
       }
@@ -170,8 +290,25 @@ export class LocalAuthService {
     const cleanUpper = clean.toUpperCase();
     const adminEmail = (env.ADMIN_EMAIL || MASTER_ADMIN_EMAIL).trim().toLowerCase();
 
+    // Fast memory cache check
+    const cached = this.usersCache.get(cleanLower) || this.usersCache.get(clean);
+    if (cached) return cached;
+
+    const isMasterAdminQuery =
+      cleanLower === 'user_admin_001' ||
+      cleanLower === 'uid_admin_001' ||
+      cleanUpper === 'KKV-ADMIN-000001' ||
+      cleanLower === 'admin' ||
+      cleanLower === 'kkvgoldfinance13' ||
+      cleanLower === 'kkvgoldfinance' ||
+      cleanLower === adminEmail ||
+      cleanLower === 'admin@kkvgoldfinance.com';
+
     // 1. Direct search in merged users
-    const users = this.getAllUsers();
+    let users = this.getAllUsers();
+    if (users.length === 0 && isMasterAdminQuery) {
+      users = this.ensureDefaultUsers();
+    }
 
     // Priority 1: Exact matches on email, staffId, uid, or _id
     let matched = users.find(
@@ -179,11 +316,40 @@ export class LocalAuthService {
         (u.staffId && u.staffId.toUpperCase() === cleanUpper) ||
         (u.email && u.email.toLowerCase() === cleanLower) ||
         (u.uid && u.uid.toLowerCase() === cleanLower) ||
-        (u._id && String(u._id).toLowerCase() === cleanLower)
+        (u._id && String(u._id).toLowerCase() === cleanLower) ||
+        ((u as any).id && String((u as any).id).toUpperCase() === cleanUpper)
     );
-    if (matched) return matched;
+    if (matched) {
+      if (isMasterAdminQuery) {
+        matched._id = 'user_admin_001';
+        matched.staffId = 'KKV-ADMIN-000001';
+        matched.uid = 'uid_admin_001';
+        (matched as any).id = 'KKV-ADMIN-000001';
+      }
+      return matched;
+    }
 
-    // Priority 2: Username / prefix matching (e.g. "admin", "staff", "rental", or user's email prefix)
+    // Priority 2: Admin query resolution
+    if (isMasterAdminQuery) {
+      const admin = users.find((u) =>
+        u.role === 'ADMIN' ||
+        u.staffId?.toUpperCase() === 'KKV-ADMIN-000001' ||
+        (u.email || '').toLowerCase() === adminEmail ||
+        u.uid === 'uid_admin_001' ||
+        String(u._id) === 'user_admin_001'
+      );
+      if (admin) {
+        admin._id = 'user_admin_001';
+        admin.staffId = 'KKV-ADMIN-000001';
+        admin.uid = 'uid_admin_001';
+        (admin as any).id = 'KKV-ADMIN-000001';
+        return admin;
+      }
+      this.ensureDefaultUsers();
+      return this.usersCache.get('user_admin_001') || this.usersCache.get('kkv-admin-000001') || null;
+    }
+
+    // Priority 3: Username / prefix matching (e.g. "staff", "rental", or user's email prefix)
     matched = users.find((u) => {
       const uEmail = (u.email || '').toLowerCase();
       const uPrefix = uEmail.split('@')[0];
@@ -192,11 +358,6 @@ export class LocalAuthService {
       if (uUsername && uUsername === cleanLower) return true;
       if (uPrefix && uPrefix === cleanLower) return true;
 
-      // Special alias routing
-      if ((cleanLower === 'admin' || cleanLower === 'kkvgoldfinance13' || cleanLower === 'kkvgoldfinance') &&
-          (u.role === 'ADMIN' || u.staffId === 'KKV-ADMIN-000001' || uEmail === adminEmail || uEmail === 'admin@kkvgoldfinance.com')) {
-        return true;
-      }
       if (cleanLower === 'staff' && (u.staffId === 'KKV-STAFF-000099' || uEmail === 'staff@kkvgoldfinance.com')) return true;
       if (cleanLower === 'rental' && (u.staffId === 'KKV-RENTAL-000001' || uEmail === 'rental@kkvgoldfinance.com')) return true;
 
@@ -204,7 +365,7 @@ export class LocalAuthService {
     });
     if (matched) return matched;
 
-    // 2. Direct lookup in Cloud Firestore repository cache
+    // 4. Direct lookup in Cloud Firestore repository cache
     try {
       const tgMatch = firestoreRepository.findRecords<IUser>(
         'USER',
@@ -214,8 +375,7 @@ export class LocalAuthService {
           Boolean(u.email && u.email.split('@')[0].toLowerCase() === cleanLower) ||
           Boolean(u.uid && u.uid.toLowerCase() === cleanLower) ||
           Boolean(u._id && String(u._id).toLowerCase() === cleanLower) ||
-          ((cleanLower === 'admin' || cleanLower === 'kkvgoldfinance13' || cleanLower === 'kkvgoldfinance') &&
-           (u.role === 'ADMIN' || (u.email || '').toLowerCase() === adminEmail || (u.email || '').toLowerCase() === 'admin@kkvgoldfinance.com'))
+          (isMasterAdminQuery && (u.role === 'ADMIN' || (u.email || '').toLowerCase() === adminEmail))
       )[0];
       if (tgMatch) return tgMatch;
     } catch {
@@ -299,6 +459,22 @@ export class LocalAuthService {
 
       // Enforce canonical properties on Master Admin
       let fieldsUpdated = false;
+      if (adminUser._id !== 'user_admin_001') {
+        adminUser._id = 'user_admin_001';
+        fieldsUpdated = true;
+      }
+      if (adminUser.staffId !== 'KKV-ADMIN-000001') {
+        adminUser.staffId = 'KKV-ADMIN-000001';
+        fieldsUpdated = true;
+      }
+      if (adminUser.uid !== 'uid_admin_001') {
+        adminUser.uid = 'uid_admin_001';
+        fieldsUpdated = true;
+      }
+      if ((adminUser as any).id !== 'KKV-ADMIN-000001') {
+        (adminUser as any).id = 'KKV-ADMIN-000001';
+        fieldsUpdated = true;
+      }
       if (adminUser.email !== adminEmail) {
         adminUser.email = adminEmail;
         fieldsUpdated = true;

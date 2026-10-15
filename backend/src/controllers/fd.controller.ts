@@ -177,7 +177,7 @@ export const getFDConfiguration = (req: Request, res: Response) => {
 };
 
 export const updateFDConfiguration = (req: Request, res: Response) => {
-  const userRole = (req.headers['user-role'] as string) || req.body?.userRole || req.query?.userRole || 'OPERATOR';
+  const userRole = req.user?.role || (req.headers['user-role'] as string) || req.body?.userRole || req.query?.userRole || 'OPERATOR';
   const isMasterAdmin = userRole === 'MASTER_ADMIN' || userRole === 'ADMIN';
 
   if (!isMasterAdmin) {

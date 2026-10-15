@@ -17,7 +17,7 @@ import {
   deleteDoc,
   writeBatch
 } from 'firebase/firestore';
-import { db } from '../config/firebase.js';
+import { db, unifiedFirestore, isUsingAdminSdk } from '../config/firebase.js';
 import {
   EntityType,
   AppRecordEnvelope,
@@ -184,15 +184,14 @@ export class FirestoreRepository {
       for (const type of entityTypes) {
         const collectionName = ENTITY_COLLECTION_MAP[type];
         try {
-          const colRef = collection(db, collectionName);
-          const snap = await getDocs(colRef);
+          const docs = await unifiedFirestore.getDocs(collectionName);
 
           if (!this.store.has(type)) {
             this.store.set(type, new Map());
           }
           const map = this.store.get(type)!;
 
-          snap.forEach((docSnap) => {
+          for (const docSnap of docs) {
             const data = docSnap.data();
             const id = docSnap.id;
             const existing = map.get(id);
@@ -213,7 +212,7 @@ export class FirestoreRepository {
             };
 
             map.set(id, envelope);
-          });
+          }
         } catch (colErr: any) {
           // If a specific collection is empty or rules pending, continue
         }
@@ -274,7 +273,6 @@ export class FirestoreRepository {
     const collectionName = ENTITY_COLLECTION_MAP[type];
     if (collectionName) {
       try {
-        const docRef = doc(db, collectionName, id);
         const payload = {
           ...(data as any),
           _version: version,
@@ -282,9 +280,13 @@ export class FirestoreRepository {
           updatedAt: envelope.updatedAt,
           isDeleted: false
         };
-        await setDoc(docRef, payload, { merge: true });
+        await unifiedFirestore.setDoc(collectionName, id, payload, { merge: true });
       } catch (err: any) {
-        console.warn(`[FirestoreRepository] Firestore persist notice for ${type}:${id}:`, err?.message || err);
+        if (err?.code === 'permission-denied' || err?.message?.includes('PERMISSION_DENIED')) {
+          console.warn(`[FirestoreRepository] Firestore PERMISSION_DENIED for ${type}:${id}. To enable write access in production, configure FIREBASE_SERVICE_ACCOUNT in environment variables.`);
+        } else {
+          console.warn(`[FirestoreRepository] Firestore persist notice for ${type}:${id}:`, err?.message || err);
+        }
       }
     }
 
@@ -495,8 +497,7 @@ export class FirestoreRepository {
     const collectionName = ENTITY_COLLECTION_MAP[type];
     if (collectionName) {
       try {
-        const docRef = doc(db, collectionName, id);
-        await setDoc(docRef, {
+        await unifiedFirestore.setDoc(collectionName, id, {
           ...(updatedData as any),
           _version: nextVersion,
           updatedAt: now,
@@ -505,7 +506,11 @@ export class FirestoreRepository {
           deletedBy
         }, { merge: true });
       } catch (err: any) {
-        console.warn(`[FirestoreRepository] Firestore update notice for ${type}:${id}:`, err?.message || err);
+        if (err?.code === 'permission-denied' || err?.message?.includes('PERMISSION_DENIED')) {
+          console.warn(`[FirestoreRepository] Firestore PERMISSION_DENIED on update for ${type}:${id}. Serving update from local/memory cache.`);
+        } else {
+          console.warn(`[FirestoreRepository] Firestore update notice for ${type}:${id}:`, err?.message || err);
+        }
       }
     }
 
@@ -542,8 +547,7 @@ export class FirestoreRepository {
 
       if (collectionName) {
         try {
-          const docRef = doc(db, collectionName, id);
-          await deleteDoc(docRef);
+          await unifiedFirestore.deleteDoc(collectionName, id);
         } catch (err: any) {
           console.warn(`[FirestoreRepository] Firestore delete notice for ${type}:${id}:`, err?.message || err);
         }
@@ -571,8 +575,7 @@ export class FirestoreRepository {
 
     if (collectionName) {
       try {
-        const docRef = doc(db, collectionName, id);
-        await setDoc(docRef, {
+        await unifiedFirestore.setDoc(collectionName, id, {
           isDeleted: true,
           deletedAt: now,
           deletedBy: envelope.deletedBy,
@@ -618,8 +621,7 @@ export class FirestoreRepository {
     const collectionName = ENTITY_COLLECTION_MAP[type];
     if (collectionName) {
       try {
-        const docRef = doc(db, collectionName, id);
-        await setDoc(docRef, {
+        await unifiedFirestore.setDoc(collectionName, id, {
           isDeleted: false,
           deletedAt: null,
           deletedBy: null,
@@ -670,10 +672,9 @@ export class FirestoreRepository {
       const collectionName = ENTITY_COLLECTION_MAP[type];
       if (collectionName) {
         try {
-          const colRef = collection(db, collectionName);
-          const snap = await getDocs(colRef);
-          for (const d of snap.docs) {
-            await deleteDoc(d.ref);
+          const docs = await unifiedFirestore.getDocs(collectionName);
+          for (const d of docs) {
+            await unifiedFirestore.deleteDoc(collectionName, d.id);
           }
         } catch (err: any) {
           console.warn(`[FirestoreRepository] Reset notice for ${collectionName}:`, err?.message || err);

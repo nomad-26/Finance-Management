@@ -436,12 +436,20 @@ export const apiService = {
     }
   },
 
-  async getMe() {
+  async getMe(): Promise<{ success: boolean; user?: any; isExpired?: boolean; isNetworkError?: boolean }> {
     const token = getStoredAuthToken();
-    if (!token) return null;
+    if (!token) {
+      return { success: false, isExpired: true };
+    }
+
+    if (isTokenExpired(token)) {
+      console.warn('[Auth] Stored JWT token has expired.');
+      setStoredAuthToken(null);
+      return { success: false, isExpired: true };
+    }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 7000);
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
       const res = await fetch(`${getApiBaseUrl()}/auth/me`, {
@@ -456,19 +464,22 @@ export const apiService = {
         if (res.status === 401 || res.status === 403) {
           console.warn(`[Auth] Session invalid or expired (${res.status}). Clearing token.`);
           setStoredAuthToken(null);
+          return { success: false, isExpired: true };
         }
-        return null;
+        console.warn(`[Auth] Backend returned non-200 status during session validation: ${res.status}`);
+        return { success: false, isNetworkError: true };
       }
 
       const json = await res.json();
-      return json.user || json.data || json;
+      const user = json.user || json.data || json;
+      return { success: true, user };
     } catch (err: any) {
       if (err.name === 'AbortError') {
-        console.warn('[Auth] Session validation request timed out.');
+        console.warn('[Auth] Session validation request timed out (possible serverless cold start).');
       } else {
         console.warn('[Auth] Session validation network error:', err?.message || err);
       }
-      return null;
+      return { success: false, isNetworkError: true };
     } finally {
       clearTimeout(timeoutId);
     }

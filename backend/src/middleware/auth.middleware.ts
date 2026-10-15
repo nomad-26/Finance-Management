@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
 import { UserModel, IUser, IUserPermissions, UserRole, normalizeUserPermissions } from '../models/User.js';
+import { localAuthService } from '../services/localAuth.service.js';
 
 // Extend Express Request to include authenticated user
 declare global {
@@ -28,10 +29,113 @@ export interface JwtPayload {
   sub?: string;
   id?: string;
   uid?: string;
+  staffId?: string;
   email: string;
   role: UserRole | 'MASTER_ADMIN';
   iat?: number;
   exp?: number;
+}
+
+export interface ResolvedUserAuth {
+  user: IUser;
+  normalizedRole: UserRole;
+  normalizedPermissions: IUserPermissions;
+  isDisabled: boolean;
+}
+
+/**
+ * Standardized, canonical identity and user-resolution service.
+ * Eliminates inconsistent identity lookups and maps legacy/current tokens safely.
+ */
+export async function resolveAuthenticatedUser(decoded: JwtPayload): Promise<ResolvedUserAuth | null> {
+  if (!decoded) return null;
+
+  const sub = decoded.sub ? String(decoded.sub).trim() : '';
+  const id = decoded.id ? String(decoded.id).trim() : '';
+  const uid = decoded.uid ? String(decoded.uid).trim() : '';
+  const staffId = (decoded as any).staffId ? String((decoded as any).staffId).trim() : '';
+  const email = decoded.email ? String(decoded.email).trim().toLowerCase() : '';
+
+  const adminEmail = (env.ADMIN_EMAIL || 'kkvgoldfinance13@gmail.com').trim().toLowerCase();
+
+  const isMasterAdmin =
+    sub.toLowerCase() === 'user_admin_001' ||
+    id.toLowerCase() === 'user_admin_001' ||
+    uid.toLowerCase() === 'uid_admin_001' ||
+    staffId.toUpperCase() === 'KKV-ADMIN-000001' ||
+    sub.toUpperCase() === 'KKV-ADMIN-000001' ||
+    id.toUpperCase() === 'KKV-ADMIN-000001' ||
+    (email && email === adminEmail) ||
+    email === 'admin@kkvgoldfinance.com';
+
+  let user: IUser | null = null;
+
+  if (isMasterAdmin) {
+    // 1. Resolve canonical Master Admin
+    user = localAuthService.findUserByIdentifier('KKV-ADMIN-000001') ||
+           localAuthService.findUserByIdentifier('user_admin_001') ||
+           localAuthService.findUserByIdentifier(adminEmail);
+
+    if (!user) {
+      localAuthService.ensureDefaultUsers();
+      user = localAuthService.findUserByIdentifier('KKV-ADMIN-000001');
+    }
+
+    if (user) {
+      // Enforce canonical ID mapping
+      user._id = 'user_admin_001';
+      user.staffId = 'KKV-ADMIN-000001';
+      user.uid = 'uid_admin_001';
+      (user as any).id = 'KKV-ADMIN-000001';
+      user.role = 'ADMIN';
+    }
+  } else {
+    // 2. Resolve other staff members via priority lookups
+    const primaryId = staffId || sub || id || uid;
+    if (primaryId) {
+      user = localAuthService.findUserByIdentifier(primaryId);
+    }
+    if (!user && email) {
+      user = localAuthService.findUserByEmail(email);
+    }
+
+    if (!user) {
+      const orClauses: any[] = [];
+      if (primaryId) {
+        orClauses.push({ staffId: primaryId });
+        orClauses.push({ uid: primaryId });
+        orClauses.push({ _id: primaryId });
+      }
+      if (email) {
+        orClauses.push({ email });
+      }
+      if (orClauses.length > 0) {
+        user = await UserModel.findOne({ $or: orClauses });
+      }
+    }
+  }
+
+  if (!user) return null;
+
+  let normalizedRole: UserRole = 'STAFF';
+  const rawRole = (user.role as string || '').toUpperCase();
+  if (rawRole === 'ADMIN' || rawRole === 'MASTER_ADMIN') {
+    normalizedRole = 'ADMIN';
+  } else if (rawRole === 'RENTAL_STAFF') {
+    normalizedRole = 'RENTAL_STAFF';
+  } else {
+    normalizedRole = 'STAFF';
+  }
+
+  const isDisabled = !user.isActive || user.status === 'inactive' || (user.status as string) === 'DISABLED';
+  const normalizedPermissions = normalizeUserPermissions(user.permissions, normalizedRole);
+
+  return {
+    user,
+    normalizedRole,
+    normalizedPermissions,
+    isDisabled
+  };
 }
 
 /**
@@ -90,25 +194,11 @@ export const authenticateUser = async (
       return;
     }
 
-    const userId = decoded.sub || decoded.id || decoded.uid;
-    const userEmail = decoded.email?.toLowerCase().trim();
+    const authResult = await resolveAuthenticatedUser(decoded);
 
-    const orClauses: any[] = [];
-    if (userId) {
-      orClauses.push({ _id: userId });
-      orClauses.push({ staffId: userId });
-      orClauses.push({ uid: userId });
-    }
-    if (userEmail) {
-      orClauses.push({ email: userEmail });
-    }
-
-    const user = orClauses.length > 0
-      ? ((await UserModel.findOne({ $or: orClauses })) as IUser | null)
-      : null;
-
-    if (!user) {
-      console.log(`[AUTH] User resolution: FAILED (Account no longer exists for ID: ${userId || userEmail})`);
+    if (!authResult) {
+      const identifier = (decoded as any).staffId || decoded.sub || decoded.id || decoded.uid || decoded.email;
+      console.log(`[AUTH] User resolution: FAILED (Account no longer exists for ID: ${identifier})`);
       res.status(401).json({
         success: false,
         error: 'UNAUTHORIZED',
@@ -117,19 +207,11 @@ export const authenticateUser = async (
       return;
     }
 
-    let normalizedRole: UserRole = 'STAFF';
-    const rawRole = (user.role as string || '').toUpperCase();
-    if (rawRole === 'ADMIN' || rawRole === 'MASTER_ADMIN') {
-      normalizedRole = 'ADMIN';
-    } else if (rawRole === 'RENTAL_STAFF') {
-      normalizedRole = 'RENTAL_STAFF';
-    } else {
-      normalizedRole = 'STAFF';
-    }
+    const { user, normalizedRole, normalizedPermissions, isDisabled } = authResult;
 
-    console.log(`[AUTH] User resolved: ${user.staffId || user.email || user.uid} | Role: ${normalizedRole} | Account status: ${user.isActive ? 'ACTIVE' : 'INACTIVE'}`);
+    console.log(`[AUTH] User resolved: ${user.staffId || user.email || user.uid} | Role: ${normalizedRole} | Account status: ${isDisabled ? 'INACTIVE' : 'ACTIVE'}`);
 
-    if (!user.isActive || user.status === 'inactive' || (user.status as string) === 'DISABLED') {
+    if (isDisabled) {
       res.status(403).json({
         success: false,
         error: 'ACCOUNT_DISABLED',
@@ -138,13 +220,11 @@ export const authenticateUser = async (
       return;
     }
 
-    const normalizedPermissions = normalizeUserPermissions(user.permissions, normalizedRole);
-
     req.user = {
-      _id: user._id?.toString(),
+      _id: user._id?.toString() || 'user_admin_001',
       id: user.staffId || user.uid || user._id?.toString() || 'USER',
       uid: user.uid || user.staffId,
-      staffId: user.staffId,
+      staffId: user.staffId || 'KKV-ADMIN-000001',
       email: user.email,
       name: user.fullName || user.displayName || user.name || 'User',
       displayName: user.displayName || user.fullName,

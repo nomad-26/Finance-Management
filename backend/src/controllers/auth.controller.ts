@@ -147,11 +147,15 @@ export const login = async (req: Request, res: Response) => {
 
     console.log(`[LOGIN] Role: ${normalizedRole}`);
 
-    // Generate JWT access token
+    // Generate JWT access token with canonical claims
+    const canonicalStaffId = user.staffId || (normalizedRole === 'ADMIN' ? 'KKV-ADMIN-000001' : 'USER');
+    const canonicalUid = user.uid || (normalizedRole === 'ADMIN' ? 'uid_admin_001' : canonicalStaffId);
+
     const payload = {
-      sub: (user._id || user.staffId).toString(),
-      id: user.staffId || user.uid,
-      staffId: user.staffId,
+      sub: canonicalStaffId,
+      id: canonicalStaffId,
+      staffId: canonicalStaffId,
+      uid: canonicalUid,
       email: user.email,
       role: normalizedRole
     };
@@ -218,44 +222,23 @@ export const getMe = async (req: Request, res: Response) => {
       });
     }
 
-    const user = await UserModel.findOne({
-      $or: [
-        { staffId: req.user.id },
-        { uid: req.user.id },
-        { email: req.user.email }
-      ]
-    });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'NOT_FOUND',
-        message: 'User record not found.'
-      });
-    }
-
-    let normalizedRole: UserRole = 'STAFF';
-    const rawRole = (user.role as string || '').toUpperCase();
-    if (rawRole === 'ADMIN' || rawRole === 'MASTER_ADMIN') {
-      normalizedRole = 'ADMIN';
-    } else if (rawRole === 'RENTAL_STAFF') {
-      normalizedRole = 'RENTAL_STAFF';
-    } else {
-      normalizedRole = 'STAFF';
-    }
-
-    const userJson = user.toJSON ? user.toJSON() : { ...user };
-    delete (userJson as any).passwordHash;
-    delete (userJson as any).save;
-
-    const normalizedPermissions = normalizeUserPermissions(user.permissions, normalizedRole);
-
     return res.status(200).json({
       success: true,
       user: {
-        ...userJson,
-        role: normalizedRole,
-        permissions: normalizedPermissions
+        _id: req.user._id,
+        id: req.user.id,
+        staffId: req.user.staffId,
+        uid: req.user.uid,
+        email: req.user.email,
+        fullName: req.user.name,
+        displayName: req.user.displayName || req.user.name,
+        name: req.user.name,
+        role: req.user.role,
+        permissions: req.user.permissions,
+        status: 'active',
+        isActive: true,
+        mustChangePassword: req.user.mustChangePassword === true,
+        department: req.user.department
       }
     });
   } catch (err: any) {

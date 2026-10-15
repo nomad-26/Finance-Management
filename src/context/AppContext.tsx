@@ -685,8 +685,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [dayBookEntries, setDayBookEntries] = useState<DayBookEntry[]>(() => getStored<DayBookEntry[]>('dayBookEntries', []));
   const [isWorkspaceSelected, setIsWorkspaceSelected] = useState<boolean>(() => getStored('isWorkspaceSelected', true));
   const [selectedWorkspace, setSelectedWorkspace] = useState<string>(() => getStored('selectedWorkspace', 'KKV GOLD FINANCE'));
-  const [userRole, setUserRole] = useState<UserRole | null>(() => getStored('userRole', null));
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => getStored('currentUser', null));
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(() => Boolean(getStoredAuthToken()));
   const [staffList, setStaffList] = useState<UserProfile[]>([]);
   const [staffAuditLogs, setStaffAuditLogs] = useState<StaffAuditLog[]>([]);
@@ -1094,14 +1094,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }, 4000);
 
       try {
-        const me = await apiService.getMe();
+        const authRes = await apiService.getMe();
         if (!isMounted) return;
 
-        if (me && me.role) {
+        const me = authRes?.user || (authRes as any)?.role ? (authRes?.user || authRes) : null;
+
+        if (authRes?.success && me && me.role) {
           const userObj: UserProfile = {
             ...me,
-            uid: me.uid || me._id || me.staffId || 'user_uid',
-            id: me.staffId || me.id || me._id,
+            uid: me.uid || 'uid_admin_001',
+            id: me.staffId || me.id || 'KKV-ADMIN-000001',
+            staffId: me.staffId || 'KKV-ADMIN-000001',
             role: normalizeRole(me.role),
             permissions: normalizePermissions(me.permissions, me.role)
           };
@@ -1118,6 +1121,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           // Complete auth restoration after data hydration
           setAuthLoading(false);
+        } else if (authRes?.isExpired) {
+          console.warn('[AppContext] Session is invalid or expired. Returning to login.');
+          setStoredAuthToken(null);
+          setCurrentUser(null);
+          setUserRole(null);
+          safeSetStored('currentUser', null);
+          safeSetStored('userRole', null);
+          setAuthLoading(false);
+        } else if (authRes?.isNetworkError) {
+          console.warn('[AppContext] Temporary connection failure during session restoration. Preserving credentials.');
+          const cachedUser = getStored<UserProfile | null>('currentUser', null);
+          if (cachedUser && cachedUser.role && !isTokenExpired(token)) {
+            setCurrentUser(cachedUser);
+            setUserRole(cachedUser.role);
+          }
+          setAuthLoading(false);
         } else {
           setStoredAuthToken(null);
           setCurrentUser(null);
@@ -1129,11 +1148,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (err) {
         console.warn('[AppContext] Initial session restoration error:', err);
         if (isMounted) {
-          setStoredAuthToken(null);
-          setCurrentUser(null);
-          setUserRole(null);
-          safeSetStored('currentUser', null);
-          safeSetStored('userRole', null);
           setAuthLoading(false);
         }
       } finally {

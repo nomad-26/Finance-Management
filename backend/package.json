@@ -21,6 +21,7 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "firebase": "^13.0.0",
+    "firebase-admin": "^13.10.0",
     "googleapis": "^178.0.0",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
