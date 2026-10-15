@@ -566,7 +566,11 @@ export const apiService = {
     return fetchJson<any[]>(`/customers${includeDeleted ? '?includeDeleted=true' : ''}`);
   },
   async getCustomerById(id: string) {
-    return fetchJson<any>(`/customers/${encodeURIComponent(id)}`);
+    const res = await fetchWithAuth<any>(`/customers/${encodeURIComponent(id)}`);
+    if (res.success && res.data) {
+      return res.data.customer || res.data.data || res.data;
+    }
+    return null;
   },
   async getCustomerKyc(id: string) {
     return fetchJson<any>(`/customers/${encodeURIComponent(id)}/kyc`);
@@ -575,7 +579,11 @@ export const apiService = {
     if (!query || !query.trim()) {
       return this.getCustomers();
     }
-    return fetchJson<any[]>(`/customers/search?query=${encodeURIComponent(query)}`);
+    const res = await fetchWithAuth<any>(`/customers/search?query=${encodeURIComponent(query)}`);
+    if (res.success && res.data) {
+      return Array.isArray(res.data) ? res.data : (res.data.data || []);
+    }
+    return [];
   },
   async createCustomer(customer: any) {
     return fetchJson<any>('/customers', {
@@ -691,10 +699,18 @@ export const apiService = {
     return fetchJson<any[]>(`/customers/${customerId}/loans`);
   },
   async createLoan(loan: any) {
-    return fetchJson<any>('/loans', {
+    const res = await fetchWithAuth<any>('/loans', {
       method: 'POST',
       body: JSON.stringify(loan),
     });
+    if (!res.success) {
+      throw new Error(res.message || 'Failed to persist loan to database.');
+    }
+    return {
+      success: true,
+      data: res.data?.data || res.data,
+      message: res.message || 'Loan issued successfully'
+    };
   },
   async updateLoan(id: string, updates: any) {
     return fetchWithAuth<any>(`/loans/${encodeURIComponent(id)}`, {

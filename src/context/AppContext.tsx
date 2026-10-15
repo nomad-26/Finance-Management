@@ -37,7 +37,6 @@ import {
 import { detectCurrentDeviceInfo, generateSessionId } from '../utils/deviceUtils';
 import { apiService, getStoredAuthToken, setStoredAuthToken, isTokenExpired } from '../services/api';
 import { generateAllNotifications } from '../utils/notificationUtils';
-import { calculateNextDueDate, parseLoanDate, formatLoanDate, addMonthsToLoanDate } from '../utils/loanCalculationUtils';
 import { calculateFDInterestSchedule, normalizeDateString, calculateInterestPeriodKey, formatFDDate, addCalendarMonths } from '../utils/fdInterestUtils';
 import { rentalApi } from '../modules/rental/services/rentalApi';
 import { dataMigrationService } from '../services/dataMigration';
@@ -361,7 +360,7 @@ interface AppContextType {
   updateWhatsAppTemplates: (templates: Partial<WhatsAppTemplates>) => void;
 
   getCustomerById: (id: string) => Customer | undefined;
-  addLoan: (loan: Omit<Loan, 'id' | 'loanNo'> & { loanNo?: string; receiptBillNo?: number }) => Loan;
+  addLoan: (loan: Omit<Loan, 'id' | 'loanNo'> & { loanNo?: string; receiptBillNo?: number }) => Promise<Loan>;
   updateLoan: (id: string, updates: any) => Promise<{ success: boolean; message?: string; data?: any }>;
   deleteLoan: (id: string, reason: string) => Promise<{ success: boolean; message?: string }>;
   addReceipt: (receipt: Omit<Receipt, 'id' | 'receiptNo'>) => Receipt;
@@ -2343,7 +2342,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return customers.find(c => c.id === id || (c.customerId && c.customerId.toString() === id));
   };
 
-  const addLoan = (loanData: Omit<Loan, 'id' | 'loanNo'> & { loanNo?: string; receiptBillNo?: number }): Loan => {
+  const addLoan = async (loanData: Omit<Loan, 'id' | 'loanNo'> & { loanNo?: string; receiptBillNo?: number }): Promise<Loan> => {
     let maxLoanNum = 0;
     for (const l of loans) {
       const match = (l.loanNo || '').match(/\d+/);
@@ -2365,108 +2364,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       finalSeq = Number(loanData.receiptBillNo);
     }
 
-    const loanNo = `GL-${finalSeq}`;
-    const receiptNo = finalSeq;
-    safeSetStored('last_loan_sequence', Math.max(finalSeq, nextLoanSeq));
-    safeSetStored('last_receipt_sequence', Math.max(finalSeq, nextLoanSeq));
+    const loanNo = loanData.loanNo || `GL-${finalSeq}`;
+    const receiptNo = loanData.receiptBillNo || finalSeq;
 
     // Deduplication check: verify if loan with loanNo or identical customer & parameters already exists
     const existingLoan = loans.find(l =>
-      (loanNo && l.loanNo.toLowerCase() === loanNo.toLowerCase()) ||
-      (l.customerId === loanData.customerId && l.date === loanData.date && l.principal === loanData.principal)
+      (loanNo && l.loanNo && l.loanNo.toLowerCase() === loanNo.toLowerCase()) ||
+      (l.customerId === loanData.customerId && l.date === loanData.date && Number(l.principal) === Number(loanData.principal))
     );
     if (existingLoan) {
       showToast(`Loan ${existingLoan.loanNo} already exists! Duplicate creation prevented.`, 'warning');
       return existingLoan;
     }
 
-    const normalizedItems = (loanData.items || []).map((it) => {
-      const gross = Math.round((Number(it.grossWeight) || 0) * 1000) / 1000;
-      const deduction = Math.round((Number(it.deductionWeight) || 0) * 1000) / 1000;
-      const net = Math.max(0, Math.round((gross - deduction) * 1000) / 1000);
-      return {
-        ...it,
-        grossWeight: gross,
-        deductionWeight: deduction,
-        netWeight: net
-      };
+    // 1. Authoritative Backend & Firestore Persistence
+    const res = await apiService.createLoan({
+      ...loanData,
+      loanNo,
+      receiptBillNo: receiptNo
     });
 
-    const totalGrossWeight = Math.round(normalizedItems.reduce((sum, it) => sum + it.grossWeight, 0) * 1000) / 1000;
-    const totalDeductionWeight = Math.round(normalizedItems.reduce((sum, it) => sum + (it.deductionWeight || 0), 0) * 1000) / 1000;
-    const totalNetWeight = Math.round(normalizedItems.reduce((sum, it) => sum + it.netWeight, 0) * 1000) / 1000;
+    const persistedLoan: Loan = res.data || res;
+    const finalLoanNo = persistedLoan.loanNo || loanNo;
+    const finalReceiptNo = persistedLoan.receiptBillNo || (persistedLoan as any).receiptNo || receiptNo;
 
-    const effectiveIssueDateStr = loanData.date || formatLoanDate(new Date());
-    const baseIssueDate = parseLoanDate(effectiveIssueDateStr);
-    const effectiveAdvanceDays = loanData.advanceDays || (loanData.deductAdvanceInterest ? 30 : 0);
-    const hasAdvance = Boolean(loanData.deductAdvanceInterest && effectiveAdvanceDays > 0);
-    const monthsCovered = hasAdvance ? Math.max(1, Math.round(effectiveAdvanceDays / 30)) : 0;
+    safeSetStored('last_loan_sequence', Math.max(finalSeq, nextLoanSeq));
+    safeSetStored('last_receipt_sequence', Math.max(finalSeq, nextLoanSeq));
 
-    const authoritativeNextDueDate = loanData.nextDueDate && loanData.nextDueDate.trim().length > 0
-      ? loanData.nextDueDate
-      : calculateNextDueDate(effectiveIssueDateStr, loanData.deductAdvanceInterest, effectiveAdvanceDays);
-
-    const coveredInterestStartDate = hasAdvance ? formatLoanDate(baseIssueDate) : undefined;
-    const coveredInterestEndDate = hasAdvance ? formatLoanDate(addMonthsToLoanDate(baseIssueDate, monthsCovered)) : undefined;
-
-    const authoritativeLastInterestPaidDate = hasAdvance
-      ? (coveredInterestEndDate || formatLoanDate(baseIssueDate))
-      : formatLoanDate(baseIssueDate);
-
-    const newLoan: Loan = {
-      ...loanData,
-      id: `L-${Date.now()}`,
-      loanNo,
-      items: normalizedItems,
-      totalGrossWeight,
-      totalDeductionWeight,
-      totalNetWeight,
-      coveredInterestStartDate,
-      coveredInterestEndDate,
-      advanceInterestCollectedAt: hasAdvance ? new Date().toISOString() : undefined,
-      lastInterestPaidDate: authoritativeLastInterestPaidDate,
-      nextDueDate: authoritativeNextDueDate
-    };
-
-    setLoans((prev) => [newLoan, ...prev]);
+    // 2. Hydrate local states now that write has succeeded
+    setLoans((prev) => [persistedLoan, ...prev]);
 
     setCustomers((prev) =>
       prev.map((c) =>
-        c.id === newLoan.customerId || c.name.toLowerCase() === newLoan.customerName.toLowerCase()
-          ? { ...c, activeLoansCount: c.activeLoansCount + 1, totalBorrowed: c.totalBorrowed + newLoan.principal }
+        c.id === persistedLoan.customerId || (c.customerId && c.customerId.toString() === persistedLoan.customerId) || c.name.toLowerCase() === persistedLoan.customerName.toLowerCase()
+          ? { ...c, activeLoansCount: (c.activeLoansCount || 0) + 1, totalBorrowed: (c.totalBorrowed || 0) + (persistedLoan.principal || 0) }
           : c
       )
     );
 
-    const effectivePrincipal = Number(newLoan.principal) || 0;
+    const effectivePrincipal = Number(persistedLoan.principal) || 0;
     const isAdvance = Boolean(loanData.deductAdvanceInterest && (loanData.advanceDays || 0) > 0);
-    const advanceDeduction = isAdvance
-      ? (typeof loanData.advanceInterestAmount === 'number' && loanData.advanceInterestAmount > 0
-          ? loanData.advanceInterestAmount
-          : Math.round(effectivePrincipal * ((newLoan.interestRate || 1.5) / 100) * ((loanData.advanceDays || 30) / 30)))
-      : 0;
-    const feeDeduction = loanData.cardFeeEnabled ? (Number(loanData.cardFee) || 0) : 0;
+    const advanceDeduction = isAdvance ? (persistedLoan.advanceInterestAmount || loanData.advanceInterestAmount || 0) : 0;
+    const feeDeduction = persistedLoan.cardFeeEnabled ? (Number(persistedLoan.cardFee) || 0) : 0;
     const otherDeductions = 0;
     const totalDeductions = advanceDeduction + feeDeduction + otherDeductions;
-    const netDisbursed = Math.max(0, effectivePrincipal - totalDeductions);
+    const netDisbursed = persistedLoan.netDisbursed !== undefined ? persistedLoan.netDisbursed : Math.max(0, effectivePrincipal - totalDeductions);
 
     const disbursementReceipt: Receipt = {
       id: `RCPT-${Date.now()}`,
-      receiptNo,
-      loanId: newLoan.id,
-      loanNo: newLoan.loanNo,
-      customerId: newLoan.customerId,
-      customerName: newLoan.customerName,
-      customerPhone: newLoan.customerPhone,
+      receiptNo: Number(finalReceiptNo),
+      loanId: persistedLoan.id,
+      loanNo: finalLoanNo,
+      customerId: persistedLoan.customerId,
+      customerName: persistedLoan.customerName,
+      customerPhone: persistedLoan.customerPhone,
       kind: 'LOAN DISBURSEMENT',
-      loanType: newLoan.loanType,
+      loanType: persistedLoan.loanType,
       amount: netDisbursed,
       principalComponent: effectivePrincipal,
       interestComponent: 0,
       loanPrincipal: effectivePrincipal,
-      interestRate: newLoan.interestRate,
+      interestRate: persistedLoan.interestRate,
       deductAdvanceInterest: isAdvance,
-      advanceDays: isAdvance ? loanData.advanceDays : 0,
+      advanceDays: isAdvance ? (loanData.advanceDays || 30) : 0,
       advanceInterestAmount: advanceDeduction,
       advanceInterestDeducted: advanceDeduction,
       processingFee: feeDeduction,
@@ -2474,12 +2434,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       otherDeductions,
       totalDeductions,
       netDisbursedAmount: netDisbursed,
-      disbursementMethod: newLoan.bankMode === 'Cash' ? 'Cash' : newLoan.bankMode === 'Split' ? 'Cash + Bank' : 'Bank',
+      disbursementMethod: persistedLoan.bankMode === 'Cash' ? 'Cash' : persistedLoan.bankMode === 'Split' ? 'Cash + Bank' : 'Bank',
       advanceReceivingMethod: loanData.advanceInterestReceivingMethod,
-      paymentMode: newLoan.bankMode === 'Cash' ? 'Cash' : newLoan.bankMode === 'Split' ? 'Bank' : ((newLoan.bankMode as any) || 'UPI'),
-      date: newLoan.date,
-      nextDueDate: authoritativeNextDueDate,
-      processedBy: 'Admin',
+      paymentMode: persistedLoan.bankMode === 'Cash' ? 'Cash' : persistedLoan.bankMode === 'Split' ? 'Bank' : ((persistedLoan.bankMode as any) || 'UPI'),
+      date: persistedLoan.date,
+      nextDueDate: persistedLoan.nextDueDate,
+      processedBy: currentUser?.displayName || (currentUser as any)?.name || 'Admin',
       notes: 'Loan Disbursement'
     };
 
@@ -2487,45 +2447,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSelectedReceipt(disbursementReceipt);
 
     const timeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    const isCash = newLoan.bankMode === 'Cash';
-    const isSplit = newLoan.bankMode === 'Split';
+    const isCash = persistedLoan.bankMode === 'Cash';
+    const isSplit = persistedLoan.bankMode === 'Split';
     const actualDisbursed = netDisbursed;
-    const cashDisbursed = isCash ? actualDisbursed : isSplit ? (newLoan.cashAmount || 0) : 0;
-    const bankDisbursed = isCash ? 0 : isSplit ? (newLoan.bankAmount || 0) : actualDisbursed;
+    const cashDisbursed = isCash ? actualDisbursed : isSplit ? (persistedLoan.cashAmount || 0) : 0;
+    const bankDisbursed = isCash ? 0 : isSplit ? (persistedLoan.bankAmount || 0) : actualDisbursed;
 
     const dbEntry: DayBookEntry = {
       id: `db-${Date.now()}`,
       time: timeStr,
-      billNo: receiptNo.toString(),
-      particulars: `Loan Disbursement (${loanNo}) - ${newLoan.customerName}`,
+      billNo: String(finalReceiptNo),
+      particulars: `Loan Disbursement (${finalLoanNo}) - ${persistedLoan.customerName}`,
       accountHead: 'Gold Loan Portfolio',
-      mode: newLoan.bankMode === 'Cash' ? 'Cash' : newLoan.bankMode === 'UPI' ? 'UPI' : 'Bank',
+      mode: persistedLoan.bankMode === 'Cash' ? 'Cash' : persistedLoan.bankMode === 'UPI' ? 'UPI' : 'Bank',
       cashIn: 0,
       cashOut: cashDisbursed,
       bankIn: 0,
       bankOut: bankDisbursed,
       cashBal: cashInHand - cashDisbursed,
       bankBal: cashAtBank - bankDisbursed,
-      customerName: newLoan.customerName,
-      loanNo,
-      date: newLoan.date
+      customerName: persistedLoan.customerName,
+      loanNo: finalLoanNo,
+      date: persistedLoan.date
     };
 
     setDayBookEntries((prev) => [dbEntry, ...prev]);
 
-    // Authoritative backend persistence & sync
-    apiService.createLoan({
-      ...loanData,
-      loanNo,
-      receiptBillNo: receiptNo
-    }).then(() => {
-      reloadAllData().catch(() => {});
-    }).catch((err) => {
-      console.warn('[AppContext] Backend loan creation warning:', err);
-    });
+    // Refresh background state
+    reloadAllData().catch(() => {});
 
-    showToast(`Loan ${loanNo} issued successfully!`, 'success');
-    return newLoan;
+    return persistedLoan;
   };
 
   const updateLoan = async (id: string, updates: any): Promise<{ success: boolean; message?: string; data?: any }> => {

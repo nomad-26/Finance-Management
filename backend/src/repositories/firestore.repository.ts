@@ -24,7 +24,7 @@ import {
   RepositoryQueryOptions,
   APP_RECORD_MARKER
 } from './entity.types.js';
-import { getStorageSubdirectory, ensureDirectoryExists, getStorageBaseDir } from '../config/storage.js';
+import { getStorageSubdirectory, ensureDirectoryExists, getStorageBaseDir, isServerless } from '../config/storage.js';
 
 // Map internal EntityType to Firestore Collection names
 export const ENTITY_COLLECTION_MAP: Record<EntityType, string> = {
@@ -269,23 +269,48 @@ export class FirestoreRepository {
     map.set(id, envelope);
     this.flushToDisk(type);
 
-    // Asynchronously persist to Cloud Firestore
+    // Persist to Cloud Firestore
     const collectionName = ENTITY_COLLECTION_MAP[type];
     if (collectionName) {
       try {
-        const payload = {
+        const payload: any = {
           ...(data as any),
           _version: version,
           createdAt: envelope.createdAt,
           updatedAt: envelope.updatedAt,
           isDeleted: false
         };
+
+        // Guarantee canonical fields required by Firestore rules & querying
+        if (type === 'LOAN') {
+          payload.loanId = payload.loanId || payload.id || payload.loanNo || id;
+          payload.principalAmount = Number(payload.principalAmount ?? payload.principal ?? 0);
+          payload.customerId = payload.customerId || payload.custId || '';
+        } else if (type === 'CUSTOMER') {
+          payload.customerId = payload.customerId || payload.id || id;
+          payload.name = payload.name || payload.fullName || '';
+          payload.phone = payload.phone || payload.phoneNumber || '';
+        }
+
         await unifiedFirestore.setDoc(collectionName, id, payload, { merge: true });
       } catch (err: any) {
-        if (err?.code === 'permission-denied' || err?.message?.includes('PERMISSION_DENIED')) {
+        const isPermDenied = err?.code === 'permission-denied' || err?.message?.includes('PERMISSION_DENIED');
+        if (isPermDenied) {
           console.warn(`[FirestoreRepository] Firestore PERMISSION_DENIED for ${type}:${id}. To enable write access in production, configure FIREBASE_SERVICE_ACCOUNT in environment variables.`);
         } else {
           console.warn(`[FirestoreRepository] Firestore persist notice for ${type}:${id}:`, err?.message || err);
+        }
+
+        // On serverless runtimes (Vercel) or when strict mode is requested, fail loudly instead of returning false success
+        if (isServerless || process.env.STRICT_FIRESTORE === 'true') {
+          const persistenceErr: any = new Error(
+            isPermDenied
+              ? `Firestore write permission denied for ${collectionName}/${id}. Please configure FIREBASE_SERVICE_ACCOUNT in Vercel environment variables.`
+              : `Firestore persistence error for ${collectionName}/${id}: ${err?.message || err}`
+          );
+          persistenceErr.code = isPermDenied ? 'FIRESTORE_PERMISSION_DENIED' : 'FIRESTORE_WRITE_FAILED';
+          persistenceErr.statusCode = isPermDenied ? 403 : 500;
+          throw persistenceErr;
         }
       }
     }

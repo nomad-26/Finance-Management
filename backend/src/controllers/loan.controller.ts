@@ -49,7 +49,16 @@ export const getLoanByNo = async (req: Request, res: Response) => {
 
 export const createLoan = async (req: Request, res: Response) => {
   try {
-    const newLoan = await loanService.create(req.body);
+    const actor = req.user
+      ? {
+          uid: req.user.staffId || req.user.id || req.user._id,
+          email: req.user.email,
+          role: req.user.role,
+          name: req.user.name || req.user.displayName
+        }
+      : undefined;
+
+    const newLoan = await loanService.create(req.body, actor);
     return res.status(201).json({
       success: true,
       message: 'Loan issued successfully',
@@ -57,7 +66,19 @@ export const createLoan = async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error('[LoanController] createLoan error:', err.message || err);
-    return res.status(400).json({
+    const statusCode =
+      err.statusCode ||
+      (err.code === 'CUSTOMER_NOT_FOUND'
+        ? 404
+        : err.code === 'CUSTOMER_BLOCKED'
+        ? 403
+        : err.code === 'FIRESTORE_PERMISSION_DENIED'
+        ? 403
+        : err.code === 'PERSISTENCE_VERIFICATION_FAILED' || err.code === 'FIRESTORE_WRITE_FAILED'
+        ? 500
+        : 400);
+
+    return res.status(statusCode).json({
       success: false,
       error: err.code || err.error || 'INVALID_REQUEST',
       message: err.message || 'Failed to create loan'

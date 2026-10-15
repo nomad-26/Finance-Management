@@ -199,7 +199,9 @@ export interface RepaymentSystemConfig {
 
 export interface Loan {
   id: string;
+  loanId?: string;
   receiptBillNo: number;
+  receiptNo?: number;
   loanNo: string;
   customerId: string;
   customerName: string;
@@ -253,6 +255,7 @@ export interface Loan {
   area?: string;
   showroom?: string;
   principal: number;
+  principalAmount?: number;
   interestRate: number;
   bankMode: 'Cash' | 'UPI' | 'Bank Transfer' | 'Split';
   splitBankMode?: string;
@@ -289,6 +292,10 @@ export interface Loan {
   documentDriveIds?: string[];
   receiptDriveIds?: string[];
   driveFolderId?: string;
+  createdStaffId?: string;
+  createdStaffName?: string;
+  createdStaffRole?: string;
+  createdStaffEmail?: string;
   isDeleted?: boolean;
   deletedAt?: string | null;
   deletedBy?: string | null;

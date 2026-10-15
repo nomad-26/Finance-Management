@@ -129,7 +129,78 @@ export const LoanIssue: React.FC = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [custSearchQuery, setCustSearchQuery] = useState<string>('');
   const [showCustSuggestions, setShowCustSuggestions] = useState<boolean>(false);
+  const [serverCustomers, setServerCustomers] = useState<Customer[]>([]);
+  const [isSearchingCustomer, setIsSearchingCustomer] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  // Debounced server customer search when user queries
+  useEffect(() => {
+    const q = custSearchQuery.trim();
+    if (!q || selectedCustomer) {
+      setServerCustomers([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingCustomer(true);
+      try {
+        const results = await apiService.searchCustomers(q);
+        if (Array.isArray(results)) {
+          setServerCustomers(results);
+          const normQ = q.toLowerCase();
+          const match = results.find(
+            (c: any) =>
+              c.id?.toLowerCase() === normQ ||
+              (c.customerId && c.customerId.toString().toLowerCase() === normQ) ||
+              (c.phone && c.phone.replace(/\D/g, '').slice(-10) === normQ.replace(/\D/g, '').slice(-10))
+          );
+          if (match && !selectedCustomer) {
+            setSelectedCustomer(match);
+          }
+        }
+      } catch (err) {
+        console.warn('[LoanIssue] Server customer search error:', err);
+      } finally {
+        setIsSearchingCustomer(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [custSearchQuery, selectedCustomer]);
+
+  // Combined candidate customers list (Local AppContext cache + Dynamic Server results)
+  const filteredCustomers = useMemo(() => {
+    const map = new Map<string, Customer>();
+    const q = custSearchQuery.toLowerCase().trim();
+
+    // 1. Add matching local customers
+    customers
+      .filter((c) => !c.isDeleted)
+      .filter((c) => {
+        if (!q) return true;
+        const normQ = q.replace(/\D/g, '').slice(-10);
+        const cPhone = (c.phone || '').replace(/\D/g, '').slice(-10);
+        return (
+          c.name.toLowerCase().includes(q) ||
+          (normQ && cPhone.includes(normQ)) ||
+          c.id.toLowerCase().includes(q) ||
+          (c.customerId && c.customerId.toString().toLowerCase().includes(q))
+        );
+      })
+      .forEach((c) => map.set(c.id || String(c.customerId), c));
+
+    // 2. Add matching server customers
+    serverCustomers
+      .filter((c) => !c.isDeleted)
+      .forEach((c) => {
+        const key = c.id || String(c.customerId);
+        if (!map.has(key)) {
+          map.set(key, c);
+        }
+      });
+
+    return Array.from(map.values());
+  }, [customers, serverCustomers, custSearchQuery]);
 
   // ──────────────────────────────────────────────────────────────────────────
   // NOMINEE KYC STATE
@@ -900,7 +971,7 @@ export const LoanIssue: React.FC = () => {
       const cleanGuarantorPhone = guarantorPhone.replace(/\D/g, '');
       const cleanGuarantorAltPhone = guarantorAltPhone.replace(/\D/g, '');
 
-      const created = addLoan({
+      const created = await addLoan({
         receiptBillNo: finalReceiptNo,
         loanNo: finalLoanNo,
         customerId: selectedCustomer.id,
@@ -1044,6 +1115,9 @@ export const LoanIssue: React.FC = () => {
         showToast(`Loan ${created.loanNo || finalLoanNo} issued successfully!`, 'success');
         setCurrentPage('receipt-display');
       }
+    } catch (err: any) {
+      console.error('Failed to issue loan:', err);
+      showToast(err?.message || 'Failed to issue loan. Your form data is preserved. Please try again.', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -1322,77 +1396,78 @@ export const LoanIssue: React.FC = () => {
                       marginTop: '4px'
                     }}
                   >
-                    {customers
-                      .filter(c => !c.isDeleted)
-                      .filter(c => {
-                        const q = custSearchQuery.toLowerCase().trim();
-                        return (
-                          c.name.toLowerCase().includes(q) ||
-                          c.phone.includes(q) ||
-                          c.id.toLowerCase().includes(q) ||
-                          (c.customerId && c.customerId.toString() === q)
-                        );
-                      })
-                      .length === 0 ? (
+                    {isSearchingCustomer && filteredCustomers.length === 0 ? (
+                      <div style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-muted, #64748b)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>Searching customer directory...</span>
+                      </div>
+                    ) : filteredCustomers.length === 0 ? (
                       <div style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--color-danger, #ef4444)', fontWeight: 600 }}>
-                        ⚠ Customer not found. Please enter a valid Customer ID or search for an existing customer.
+                        ⚠ No matching customer found. Please enter a valid Customer ID or search for an existing customer.
                       </div>
                     ) : (
-                      customers
-                        .filter(c => !c.isDeleted)
-                        .filter(c => {
-                          const q = custSearchQuery.toLowerCase().trim();
-                          return (
-                            c.name.toLowerCase().includes(q) ||
-                            c.phone.includes(q) ||
-                            c.id.toLowerCase().includes(q) ||
-                            (c.customerId && c.customerId.toString() === q)
-                          );
-                        })
-                        .map((c, idx) => (
-                          <div
-                            key={`sug-${c.id}-${idx}`}
-                            style={{
-                              padding: '10px 16px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              cursor: 'pointer',
-                              borderBottom: '1px solid var(--border-subtle, #f1f5f9)'
-                            }}
-                            onClick={() => {
-                              setSelectedCustomer(c);
-                              setCustSearchQuery(`${c.name} (${c.id})`);
-                              setShowCustSuggestions(false);
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              {c.customerPhoto ? (
-                                <img src={c.customerPhoto} alt={c.name} style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
-                              ) : (
-                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--color-light-accent)', color: 'var(--color-primary-dark)', fontWeight: 700, fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  {c.name.charAt(0).toUpperCase()}
-                                </div>
-                              )}
-                              <div>
-                                <strong style={{ fontSize: '13.5px', color: 'var(--text-dark)' }}>{c.name}</strong>
-                                <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', display: 'block' }}>+91 {c.phone}</span>
+                      filteredCustomers.map((c, idx) => (
+                        <div
+                          key={`sug-${c.id}-${idx}`}
+                          style={{
+                            padding: '10px 16px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            cursor: 'pointer',
+                            borderBottom: '1px solid var(--border-subtle, #f1f5f9)'
+                          }}
+                          onClick={() => {
+                            setSelectedCustomer(c);
+                            setCustSearchQuery(`${c.name} (${c.id})`);
+                            setShowCustSuggestions(false);
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            {c.customerPhoto ? (
+                              <img src={c.customerPhoto} alt={c.name} style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
+                            ) : (
+                              <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--color-light-accent)', color: 'var(--color-primary-dark)', fontWeight: 700, fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {c.name.charAt(0).toUpperCase()}
                               </div>
+                            )}
+                            <div>
+                              <strong style={{ fontSize: '13.5px', color: 'var(--text-dark)' }}>{c.name}</strong>
+                              <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', display: 'block' }}>+91 {c.phone}</span>
                             </div>
-                            <span className="badge badge-success" style={{ fontSize: '11px' }}>{c.id}</span>
                           </div>
-                        ))
+                          <span className="badge badge-success" style={{ fontSize: '11px' }}>{c.id}</span>
+                        </div>
+                      ))
                     )}
                   </div>
                 )}
               </div>
 
-              {/* Customer Not Found Warning Banner */}
+              {/* Customer Selection Status Banner */}
               {!selectedCustomer && (
-                <div style={{ backgroundColor: 'var(--badge-danger-bg)', border: '1px solid var(--badge-danger-border)', borderRadius: '8px', padding: '12px 16px', color: 'var(--color-danger)', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <AlertTriangle size={18} style={{ flexShrink: 0 }} />
-                  <span>⚠ Customer not found. Please enter a valid Customer ID or search for an existing customer.</span>
-                </div>
+                <>
+                  {!custSearchQuery.trim() ? (
+                    <div style={{ backgroundColor: 'var(--bg-subtle, #f8fafc)', border: '1px dashed var(--border-light, #cbd5e1)', borderRadius: '8px', padding: '12px 16px', color: 'var(--text-muted, #64748b)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <User size={18} style={{ flexShrink: 0, color: 'var(--color-primary, #059669)' }} />
+                      <span>Select or search for an existing customer above to attach to this loan.</span>
+                    </div>
+                  ) : isSearchingCustomer ? (
+                    <div style={{ backgroundColor: 'rgba(5, 150, 105, 0.08)', border: '1px solid rgba(5, 150, 105, 0.2)', borderRadius: '8px', padding: '12px 16px', color: 'var(--color-primary-dark, #065f46)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <Search size={18} style={{ flexShrink: 0 }} />
+                      <span>Searching customer directory for "{custSearchQuery.trim()}"...</span>
+                    </div>
+                  ) : filteredCustomers.length === 0 ? (
+                    <div style={{ backgroundColor: 'var(--badge-danger-bg)', border: '1px solid var(--badge-danger-border)', borderRadius: '8px', padding: '12px 16px', color: 'var(--color-danger)', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+                      <span>⚠ Customer not found for "{custSearchQuery.trim()}". Please enter a valid Customer ID or search for an existing customer.</span>
+                    </div>
+                  ) : (
+                    <div style={{ backgroundColor: 'var(--bg-subtle, #f8fafc)', border: '1px solid var(--border-light, #cbd5e1)', borderRadius: '8px', padding: '12px 16px', color: 'var(--text-muted, #64748b)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <User size={18} style={{ flexShrink: 0, color: 'var(--color-primary, #059669)' }} />
+                      <span>Found {filteredCustomers.length} matching customer{filteredCustomers.length > 1 ? 's' : ''}. Please select one from the dropdown suggestions above.</span>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* READ-ONLY CUSTOMER PREVIEW CARD */}

@@ -44,8 +44,15 @@ function resolveServiceAccount(): admin.ServiceAccount | null {
     const rawSa = process.env.FIREBASE_SERVICE_ACCOUNT || process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
     if (rawSa && rawSa.trim()) {
       let jsonStr = rawSa.trim();
-      if (!jsonStr.startsWith('{') && !jsonStr.endsWith('}')) {
-        // Base64 encoded
+      // Handle surrounding single or double quotes from shell/.env
+      if ((jsonStr.startsWith('"') && jsonStr.endsWith('"')) || (jsonStr.startsWith("'") && jsonStr.endsWith("'"))) {
+        jsonStr = jsonStr.slice(1, -1).trim();
+      }
+      // Check if it's a file path
+      if (fs.existsSync(jsonStr)) {
+        jsonStr = fs.readFileSync(jsonStr, 'utf8').trim();
+      } else if (!jsonStr.startsWith('{') && !jsonStr.endsWith('}')) {
+        // Base64 encoded JSON
         jsonStr = Buffer.from(jsonStr, 'base64').toString('utf8');
       }
       const parsed = JSON.parse(jsonStr);

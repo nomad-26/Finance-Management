@@ -158,6 +158,29 @@ export class CustomerModel {
         return targetPhone && cPhone === targetPhone;
       });
     }
+    if (query.$or && Array.isArray(query.$or)) {
+      records = records.filter((c) =>
+        query.$or.some((clause: any) => {
+          for (const key of Object.keys(clause)) {
+            const expected = clause[key];
+            if (!expected) continue;
+
+            const actualVal =
+              (c as any)[key] ??
+              (key === 'fullName' ? c.name : key === 'name' ? c.fullName : key === 'phone' ? c.phoneNumber : key === 'phoneNumber' ? c.phone : undefined);
+
+            if (expected instanceof RegExp) {
+              if (actualVal !== undefined && actualVal !== null && expected.test(String(actualVal))) return true;
+            } else if (typeof expected === 'string') {
+              if (actualVal !== undefined && actualVal !== null && String(actualVal).toLowerCase().includes(expected.toLowerCase())) return true;
+            } else if (actualVal === expected) {
+              return true;
+            }
+          }
+          return false;
+        })
+      );
+    }
 
     const chain = {
       sort: () => chain,

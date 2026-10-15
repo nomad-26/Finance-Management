@@ -7,6 +7,7 @@ import { receiptService } from './receipt.service.js';
 import { accountingService } from './accounting.service.js';
 import { adminService } from './admin.service.js';
 import { counterService } from './counter.service.js';
+import { CustomerModel } from '../models/Customer.js';
 import { FileAttachmentModel } from '../models/FileAttachment.js';
 import { StaffAuditModel } from '../models/StaffAudit.js';
 import {
@@ -140,16 +141,60 @@ export class LoanService {
   }
 
   public async create(loanData: Omit<Loan, 'id' | 'loanNo' | 'receiptBillNo' | 'outstandingPrincipal' | 'accruedInterest' | 'status'>, actor?: any): Promise<Loan> {
+    const customerId = (loanData.customerId || (loanData as any).custId || '').trim();
+    if (!customerId) {
+      const err: any = new Error('Customer ID is required. Please select an existing customer.');
+      err.code = 'CUSTOMER_REQUIRED';
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const customer = customerService.getById(customerId) || (await CustomerModel.findOne({
+      $or: [
+        { customerId },
+        { id: customerId }
+      ]
+    }).lean());
+
+    if (!customer) {
+      const err: any = new Error(`Customer with ID "${customerId}" not found. Please select an existing customer.`);
+      err.code = 'CUSTOMER_NOT_FOUND';
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (customer.isDeleted) {
+      const err: any = new Error(`Customer "${customerId}" is inactive or marked as deleted.`);
+      err.code = 'CUSTOMER_DELETED';
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (customer.status === 'BLOCKED') {
+      const err: any = new Error(`Customer "${customerId}" is currently blocked from receiving new loans.`);
+      err.code = 'CUSTOMER_BLOCKED';
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const effectivePrincipal = Number(loanData.principal);
+    if (!effectivePrincipal || effectivePrincipal <= 0 || isNaN(effectivePrincipal)) {
+      const err: any = new Error('Principal amount must be greater than zero.');
+      err.code = 'INVALID_PRINCIPAL';
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (!loanData.items || !Array.isArray(loanData.items) || loanData.items.length === 0) {
+      const err: any = new Error('At least one collateral item is required to issue a gold loan.');
+      err.code = 'COLLATERAL_REQUIRED';
+      err.statusCode = 400;
+      throw err;
+    }
+
     const seq = await counterService.getNextLoanSequence();
     const loanNo = `GL-${seq}`;
     const id = loanNo;
-
-    const effectivePrincipal = Number(loanData.principal);
-    if (!effectivePrincipal || effectivePrincipal <= 0) {
-      const err: any = new Error('Principal amount must be greater than zero.');
-      err.code = 'INVALID_PRINCIPAL';
-      throw err;
-    }
 
     const activeConfigs = adminService.getLoanTypeConfigs();
     let matchedType: any = undefined;
@@ -281,9 +326,15 @@ export class LoanService {
       ...loanData,
       photos: loanData.photos || [],
       principal: effectivePrincipal,
+      principalAmount: effectivePrincipal,
       id,
+      loanId: id,
       loanNo,
       receiptBillNo: seq,
+      receiptNo: seq,
+      customerId: customer.id || customer.customerId,
+      customerName: customer.name || customer.fullName || loanData.customerName,
+      customerPhone: customer.phone || customer.phoneNumber || loanData.customerPhone,
       loanType: matchedType ? matchedType.name : loanData.loanType,
       loanTypeId: matchedType ? matchedType.id : (loanData.loanTypeId || 'gold-loan'),
       loanTypeName: matchedType ? matchedType.name : (loanData.loanTypeName || loanData.loanType),
@@ -339,6 +390,10 @@ export class LoanService {
       advanceInterestCollectedAt: hasAdvance ? new Date().toISOString() : undefined,
       lastInterestPaidDate: authoritativeLastInterestPaidDate,
       nextDueDate: authoritativeNextDueDate,
+      createdStaffId: actor?.uid || actor?.staffId || actor?.id,
+      createdStaffName: actor?.name || actor?.displayName,
+      createdStaffRole: actor?.role,
+      createdStaffEmail: actor?.email,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -346,8 +401,16 @@ export class LoanService {
     // Persist to Cloud Firestore
     await firestoreRepository.createRecord('LOAN', newLoan.id, newLoan, actor);
 
+    // Verify persistence with read-after-write
+    const persisted = firestoreRepository.getRecordById('LOAN', newLoan.id);
+    if (!persisted) {
+      const err: any = new Error(`Loan persistence verification failed for ${newLoan.id}. Record was not found in repository.`);
+      err.code = 'PERSISTENCE_VERIFICATION_FAILED';
+      err.statusCode = 500;
+      throw err;
+    }
+
     // Update customer active loans count
-    const customer = customerService.getById(newLoan.customerId);
     if (customer) {
       await customerService.update(customer.id, {
         activeLoansCount: (customer.activeLoansCount || 0) + 1,
