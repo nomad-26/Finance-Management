@@ -65,6 +65,8 @@ export async function resolveAuthenticatedUser(decoded: JwtPayload): Promise<Res
     staffId.toUpperCase() === 'KKV-ADMIN-000001' ||
     sub.toUpperCase() === 'KKV-ADMIN-000001' ||
     id.toUpperCase() === 'KKV-ADMIN-000001' ||
+    decoded.role === 'ADMIN' ||
+    (decoded.role as string) === 'MASTER_ADMIN' ||
     (email && email === adminEmail) ||
     email === 'admin@kkvgoldfinance.com';
 

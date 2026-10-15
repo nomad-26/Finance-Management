@@ -350,6 +350,15 @@ export const apiService = {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
+    const rawIdentifier = (credentials.identifier || credentials.email || credentials.username || credentials.id || '').trim();
+    const payload = {
+      identifier: rawIdentifier,
+      email: credentials.email || rawIdentifier,
+      username: credentials.username || rawIdentifier,
+      id: credentials.id || rawIdentifier,
+      password: credentials.password
+    };
+
     console.log(`[AUTH] API Base URL: ${baseUrl}`);
     console.log('[AUTH] POST /auth/login');
 
@@ -358,7 +367,7 @@ export const apiService = {
       res = await fetch(`${baseUrl}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(credentials),
+        body: JSON.stringify(payload),
         signal: controller.signal
       });
     } catch (networkErr: any) {

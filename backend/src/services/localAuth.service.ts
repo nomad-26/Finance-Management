@@ -97,8 +97,15 @@ export class LocalAuthService {
   public ensureDefaultUsers(): IUser[] {
     const adminEmail = (env.ADMIN_EMAIL || MASTER_ADMIN_EMAIL).trim().toLowerCase();
     const adminName = (env.ADMIN_NAME || 'Kkvgoldfinance').trim();
-    // Known bcrypt hash for default admin password (Admin@123456)
-    const fallbackHash = '$2b$10$wS2Wb5jA8PfZ5i1vjPjDquqfG.7l5e5iI/1K4s2q1oY.mF8Zq9g7a';
+    const adminPassword = env.ADMIN_INITIAL_PASSWORD || env.ADMIN_PASSWORD || 'Admin@123456';
+    const validHash = bcrypt.hashSync(adminPassword, 10);
+
+    const isBogusHash = (h: string | undefined): boolean => {
+      if (!h || typeof h !== 'string') return true;
+      if (!h.startsWith('$2')) return true;
+      if (h === '$2b$10$wS2Wb5jA8PfZ5i1vjPjDquqfG.7l5e5iI/1K4s2q1oY.mF8Zq9g7a') return true;
+      return false;
+    };
 
     let localUsers: IUser[] = [];
     try {
@@ -130,7 +137,7 @@ export class LocalAuthService {
         phoneNumber: '9876543210',
         phone: '9876543210',
         role: 'ADMIN',
-        passwordHash: fallbackHash,
+        passwordHash: validHash,
         status: 'active',
         isActive: true,
         mustChangePassword: false,
@@ -152,8 +159,8 @@ export class LocalAuthService {
       if (admin.email !== adminEmail) { admin.email = adminEmail; fieldsUpdated = true; }
       if (admin.role !== 'ADMIN') { admin.role = 'ADMIN'; fieldsUpdated = true; }
       if (admin.status !== 'active') { admin.status = 'active'; admin.isActive = true; fieldsUpdated = true; }
-      if (!admin.passwordHash || !admin.passwordHash.startsWith('$2')) {
-        admin.passwordHash = fallbackHash;
+      if (isBogusHash(admin.passwordHash)) {
+        admin.passwordHash = validHash;
         fieldsUpdated = true;
       }
       if (fieldsUpdated) {
@@ -498,10 +505,13 @@ export class LocalAuthService {
       }
 
       // Ensure Master Admin has a valid bcrypt password hash without overwriting changed passwords
-      if (!adminUser.passwordHash || !adminUser.passwordHash.startsWith('$2')) {
+      const isBogusAdminHash = !adminUser.passwordHash ||
+        !adminUser.passwordHash.startsWith('$2') ||
+        adminUser.passwordHash === '$2b$10$wS2Wb5jA8PfZ5i1vjPjDquqfG.7l5e5iI/1K4s2q1oY.mF8Zq9g7a';
+      if (isBogusAdminHash) {
         adminUser.passwordHash = await bcrypt.hash(adminPassword, 10);
         fieldsUpdated = true;
-        console.log('[LocalAuth] Initialized missing bcrypt password hash for canonical Admin account');
+        console.log('[LocalAuth] Initialized or corrected bcrypt password hash for canonical Admin account');
       }
 
       if (fieldsUpdated) {
